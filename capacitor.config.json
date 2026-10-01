@@ -1,0 +1,10 @@
+{
+  "appId": "com.tharun.finly",
+  "appName": "Finly",
+  "webDir": "dist",
+  "android": { "allowMixedContent": false, "backgroundColor": "#0A0F1D" },
+  "plugins": {
+    "SystemBars": { "insetsHandling": "css", "initialViewportFitValueHint": "cover", "style": "DARK" },
+    "LocalNotifications": { "smallIcon": "ic_stat_finly", "iconColor": "#7C9BFF" }
+  }
+}

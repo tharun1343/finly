@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.secrets/
+.claude/
+.env
+.env.*
+*.keystore
+*.jks
+*.p12
+android/app/release.keystore
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+android/local.properties
+.DS_Store
