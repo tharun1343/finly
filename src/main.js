@@ -9,7 +9,7 @@ import { isNative, watchNetwork, onResume, onBack, onNotificationTap, requestNot
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let current = null, appStarted = false, loggingOut = false, pendingNotif = null;
 
-function hideBoot(){ const b = $('#boot'); b.classList.add('gone'); setTimeout(() => b.remove(), 400); }
+function hideBoot(){ const b = $('#boot'); if(!b || b.classList.contains('gone')) return; b.classList.add('gone'); setTimeout(() => b.remove(), 400); }
 function resetLook(){ const r = document.documentElement; r.removeAttribute('style'); r.dataset.theme = 'dark'; r.dataset.text = 'md'; }
 
 async function enter(u){
