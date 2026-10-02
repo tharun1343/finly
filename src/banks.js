@@ -1,3 +1,5 @@
+import { BANK_LOGOS } from './bank-logos.js';
+
 // Banks operating in India, grouped as the RBI classifies them.
 // [display name, short name, IFSC prefix]; the prefix lets the app recognise a bank from its IFSC.
 export const BANK_GROUPS = [
@@ -65,8 +67,13 @@ export function bankMono(name){
   if(/^[A-Z&]{2,4}$/.test(words[0])) return words[0];
   return (words.length > 1 ? words.slice(0, 3).map(w => w[0]).join('') : s.slice(0, 3)).toUpperCase();
 }
-/** Glossy, brand-coloured monogram badge. */
-export const bankBadgeHTML = (name, cls = '') => `<span class="bank-badge ${cls}" style="--bk:${bankColor(name)}" aria-hidden="true"><span>${String(bankMono(name)).replace(/[&<>]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[c]))}</span></span>`;
+export const bankSlug = name => String(name).toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+/** The bank's own icon when we ship one (public/banks), otherwise a brand-coloured monogram badge. */
+export function bankBadgeHTML(name, cls = ''){
+  const known = findBank(name), s = known && bankSlug(known[0]);
+  if(s && BANK_LOGOS.has(s)) return `<span class="bank-logo ${cls}" aria-hidden="true"><img src="./banks/${s}.webp" alt="" draggable="false"></span>`;
+  return `<span class="bank-badge ${cls}" style="--bk:${bankColor(name)}" aria-hidden="true"><span>${String(bankMono(name)).replace(/[&<>]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[c]))}</span></span>`;
+}
 
 /* ---------- branch lookup from IFSC (Razorpay's free public IFSC API) ---------- */
 const branchCache = new Map();

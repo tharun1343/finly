@@ -825,3 +825,14 @@ input[type=date]:disabled + .date-show{ opacity:.55; }
 .dd-menu.grid .dd-opt .ck, .dd-menu.grid .dd-l{ display:none; }
 .dd-menu.grid .dd-ic{ width:30px; height:30px; }
 .dd-menu.grid .dd-ic .e3d{ width:28px; height:28px; }
+
+/* ---------- real bank icons ---------- */
+.bank-logo{ width:42px; height:42px; border-radius:13px; flex-shrink:0; overflow:hidden; display:inline-flex; background:#fff;
+  box-shadow:0 0 0 1px rgba(14,20,45,.08), 0 6px 14px -8px rgba(0,0,0,.45); }
+.bank-logo img{ width:100%; height:100%; object-fit:cover; display:block; }
+.bank-logo.sm, .bank-badge.sm{ width:24px; height:24px; border-radius:7px; }
+.bank-logo.xs, .bank-badge.xs{ width:15px; height:15px; border-radius:4px; font-size:5.5px; box-shadow:0 0 0 1px rgba(14,20,45,.1); }
+.bank-badge.xs::after{ display:none; }
+.dd-trigger .bank-logo{ margin-right:2px; }
+.acc.static{ margin-top:14px; }
+.acc.static .acc-inner > :first-child{ margin-top:0; }

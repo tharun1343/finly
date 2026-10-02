@@ -29,7 +29,7 @@ const perLabel = n => PER[n] || `${n} months`;
 const announced = it => it.kind === 'chit' && it.nextDate && it.nextDateRound === it.roundsDone + 1;
 const nextDue = it => it.kind === 'chit' ? (announced(it) ? it.nextDate : roundDate(it, it.roundsDone + 1)) : it.due;
 const fileCount = it => (it.files || []).length;
-const bankTagHTML = it => { const b = it.bankId && (store.state.settings.banks || []).find(x => x.id === it.bankId); return b ? `<span class="bank-tag" style="--bk:${bankColor(b.name)}"><span class="bk-dot"></span>${esc(shortName(b.name))} ${maskAcct(b.acct)}</span>` : ''; };
+const bankTagHTML = it => { const b = it.bankId && (store.state.settings.banks || []).find(x => x.id === it.bankId); return b ? `<span class="bank-tag">${bankBadgeHTML(b.name, 'xs')}${esc(shortName(b.name))} ${maskAcct(b.acct)}</span>` : ''; };
 const clipHTML = it => fileCount(it) ? `<button class="clip-badge" data-act="files" aria-label="${fileCount(it)} documents"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>${fileCount(it)}</button>` : '';
 const alertWindow = it => Math.max(7, ...effReminders(it));
 const paidRecently = it => it.kind === 'bill' && !!it.lastPaid && diffDays(T, it.due) > alertWindow(it);
@@ -48,6 +48,7 @@ function histDesc(h, mf, rich){
     : h.type === 'taken' ? `${b('Took the pot')} — bid ${mf(h.bid)}, received ${mf(h.received)}`
     : h.type === 'last' ? b('Final round — pot came to you') : h.type === 'opening' ? `Opening balance for rounds 1–${h.round}` : 'Paid in full';
 }
+const lateNote = (h, mf) => h.lateFee ? ` · late fee ${mf(h.lateFee)}` : '';
 const exportHelpers = { cat, catLabel, itemPaid, itemRemaining, nextDue, histDesc };
 
 function computeAlerts(){
@@ -55,7 +56,8 @@ function computeAlerts(){
   const out = [];
   for(const it of activeItems()){
     const due = nextDue(it), d = diffDays(T, due), offs = effReminders(it);
-    if(d < 0 || !offs.length || paidRecently(it)) continue;
+    if(d < 0){ out.push({ it, due, d }); continue; }   // overdue: always shown until it's marked paid
+    if(!offs.length || paidRecently(it)) continue;
     if(d <= Math.max(...offs)) out.push({ it, due, d });
   }
   return out.sort((a, b) => a.d - b.d);
@@ -124,7 +126,7 @@ function flushBars(){
 
 function billStatus(it){
   const d = diffDays(T, it.due);
-  if(d < 0) return { cls:'due', label:'Overdue', urgent:true, text:`Was due ${fmtDate(it.due)}` };
+  if(d < 0) return { cls:'due', label:'Overdue', urgent:true, text:`Was due ${fmtDate(it.due)} · ${-d} day${d === -1 ? '' : 's'} ago` };
   if(paidRecently(it)) return { cls:'ok', label:'Paid ' + fmtShort(it.lastPaid), text:`Next due ${fmtDate(it.due)}` };
   if(d === 0) return { cls:'due', label:'Due today', urgent:true, text:fmtDate(it.due) };
   if(d === 1) return { cls:'due', label:'Due tomorrow', urgent:true, text:fmtDate(it.due) };
@@ -158,7 +160,7 @@ function chitCompact(it, i){
   const dueTxt = d < 0 ? `Round ${r} was ${fmtDate(due)}` : d === 0 ? `Round ${r} · today` : d === 1 ? `Round ${r} · tomorrow` : `Round ${r} · ${fmtDate(due)}`;
   return `<article class="item-card ${enterCls(it.id)}" data-id="${it.id}" style="--accent:${taken ? 'var(--rose)' : catColor(c)};--i:${i}">
     <div class="ic-top"><div class="ic-id"><div class="glyph" style="--accent:${catColor(c)}">${glyphHTML(c)}</div><div style="min-width:0"><div class="ic-name">${esc(it.name)}</div>
-      <div class="ic-meta"><span class="badge ${taken ? 'debt' : 'save'}">${taken ? 'Taken · Debt' : 'Not taken · Savings'}</span><span class="due-text ${urgent ? 'urgent' : ''}">${dueTxt}</span>${clipHTML(it)}</div></div></div>
+      <div class="ic-meta">${d < 0 ? '<span class="badge due">Overdue</span>' : ''}<span class="badge ${taken ? 'debt' : 'save'}">${taken ? 'Taken · Debt' : 'Not taken · Savings'}</span><span class="due-text ${urgent ? 'urgent' : ''}">${dueTxt}</span>${clipHTML(it)}</div></div></div>
       <div class="ic-amt"><div class="amt">${fmtMoney(it.installment)}</div><div class="per">/ round</div></div></div>
     <div class="progress-row"><div class="progress-labels"><span>Rounds <b>${it.roundsDone} of ${it.members} done</b></span><span>${pct}%</span></div>${barHTML(it.id, pct)}</div>
     <div class="ic-foot"><div class="figs">
@@ -238,7 +240,8 @@ function renderStats(){
     const sub = it.status === 'closed' ? `Closed ${fmtDate(it.closedOn)} · ${fmtMoney(paid)} paid`
       : it.kind === 'chit' ? `${fmtMoney(paid)} in · ${it.taken ? fmtMoney(rem) + ' owed' : '+' + fmtMoney(it.commission) + ' commission'}`
       : it.ongoing ? `${fmtMoney(paid)} paid · ongoing` : `${fmtMoney(paid)} paid · ${fmtMoney(rem)} left`;
-    return `<div class="by-row" style="--accent:${catColor(c)};--i:${i}"><div class="glyph">${glyphHTML(c, it)}</div><div style="min-width:0"><div class="by-name">${esc(it.name)}</div><div class="by-sub">${sub}</div>${it.ongoing ? '' : barHTML('by_' + it.id, pct, catColor(c))}</div>
+    const subFull = sub + (it.lateFees ? ` · ${fmtMoney(it.lateFees)} late fees` : '');
+    return `<div class="by-row" style="--accent:${catColor(c)};--i:${i}"><div class="glyph">${glyphHTML(c, it)}</div><div style="min-width:0"><div class="by-name">${esc(it.name)}</div><div class="by-sub">${subFull}</div>${it.ongoing ? '' : barHTML('by_' + it.id, pct, catColor(c))}</div>
       <button class="mini-btn" data-export="${it.id}" aria-label="Export ${esc(it.name)}">${ICON.download}</button></div>`; }).join('')
     : `<div class="empty" style="padding:20px">${byView === 'active' ? 'No active commitments.' : 'Finished EMIs and chits show up here.'}</div>`;
   const ds = t.debt + t.savings, dp = ds ? Math.round(t.debt / ds * 100) : 0;
@@ -274,7 +277,7 @@ function chitDetail(it, i){
       <div class="metric"><div class="fig-label">Still waiting</div><div class="fig-value">${it.members - it.roundsDone}</div><div class="fig-sub">people incl. you</div></div>`;
     note = `You haven't taken the pot yet. Each round you get a share of the winning bid, so you pay less — counted as savings until you take it.`;
   }
-  const hist = it.history.length ? [...it.history].reverse().map(h => `<div class="h-row"><span class="h-round">R${h.round}</span><span class="h-desc">${histDesc(h, fmtMoney, true)}<br><span style="color:var(--text-faint)">${fmtDate(h.date)}</span></span><span class="h-amt">${fmtMoney(h.paid)}</span></div>`).join('')
+  const hist = it.history.length ? [...it.history].reverse().map(h => `<div class="h-row"><span class="h-round">R${h.round}</span><span class="h-desc">${histDesc(h, fmtMoney, true)}${lateNote(h, fmtMoney)}<br><span style="color:var(--text-faint)">${fmtDate(h.date)}</span></span><span class="h-amt">${fmtMoney(h.paid)}</span></div>`).join('')
     : '<div class="h-desc" style="padding:6px 0">No rounds recorded yet.</div>';
   return `<article class="chit-card ${enterCls('w_' + it.id)}" data-id="${it.id}" data-state="${taken ? 'taken' : 'saving'}" style="--i:${i}">
     <div class="chit-head"><div style="min-width:0"><div class="chit-name">${c?.emoji ? e3d(c.emoji, 'name-3d') : ''}${esc(it.name)} <button type="button" class="info-i" data-info="${esc(note)}" aria-label="What this means">i</button> ${clipHTML(it)}</div><div class="chit-meta">${meta}</div></div>
@@ -411,24 +414,66 @@ function onCardAction(e){
    EMI / BILL
 ================================================================ */
 function payBill(it){
+  if(diffDays(T, it.due) < 0) return openLateSheet(it);
   if(paidRecently(it)) return confirmBox({ title:'Already paid this cycle', body:`You paid ${it.name} on ${fmtDate(it.lastPaid)}. Pay the ${fmtDate(it.due)} installment early?`, yes:'Yes, pay early', danger:false, onYes:() => doPay(it.id) });
   const last = !it.ongoing && it.tenureLeft === 1;
   confirmBox({ title:`Has ${it.name} been paid?`, body:`${fmtMoney(it.amount)} due ${fmtDate(it.due)}${it.bankId && bankById(it.bankId) ? ' · from ' + bankLabel(bankById(it.bankId)) : ''}.${last ? ' This is the last payment — it will move to Closed.' : ''}`,
     yes:'Yes, it\'s paid', danger:false, onYes:() => doPay(it.id) });
 }
-async function doPay(id){
+async function doPay(id, { date = T, fee = 0 } = {}){
   const it = findItem(id), closing = !it.ongoing && it.tenureLeft === 1, name = it.name, amt = it.amount;
   if(closing) await animateOut(id);
   const newDue = addMonths(it.due, ev(it), it.anchorDay);
   commit(() => {
     const x = findItem(id);
-    x.paid += x.amount; x.lastPaid = T; x.history.push({ date:T, amount:x.amount, n: x.ongoing ? null : x.tenureTotal - x.tenureLeft + 1 });
+    x.paid += x.amount; x.lastPaid = date;
+    x.history.push({ date, amount:x.amount, n: x.ongoing ? null : x.tenureTotal - x.tenureLeft + 1, ...(fee ? { lateFee:fee } : {}) });
+    if(fee) x.lateFees = round2((x.lateFees || 0) + fee);
     if(!x.ongoing) x.tenureLeft -= 1;
     if(!x.ongoing && x.tenureLeft === 0){ x.status = 'closed'; x.closedOn = T; }
     else x.due = newDue;
   }, closing ? { type:'success', title:`${name} fully paid 🎉`, body:'Moved to Closed in Chits.' }
-             : { type:'success', title:'Marked as paid', body:`${name} · ${fmtMoney(amt)} · next due ${fmtDate(newDue)}` });
+             : { type:'success', title: date !== T && !fee ? 'Marked as paid on time' : 'Marked as paid', body:`${name} · ${fmtMoney(amt)}${fee ? ` + ${fmtMoney(fee)} late charges` : ''} · next due ${fmtDate(newDue)}` });
   if(!closing) flashCard(id);
+}
+
+/* ---------- paying an overdue bill: on time (forgot to mark) or late with charges ---------- */
+let lateItem = null, lateMode = null;
+function openLateSheet(it){
+  lateItem = it; lateMode = null; clearForm('lateSheet');
+  const days = -diffDays(T, it.due);
+  $('#ltTitle').textContent = `${it.name} was due ${fmtDate(it.due)}`;
+  $('#ltSub').textContent = `That's ${days} day${days === 1 ? '' : 's'} ago · ${fmtMoney(it.amount)}${it.bankId && bankById(it.bankId) ? ' from ' + bankLabel(bankById(it.bankId)) : ''}`;
+  $('#ltDate').min = addDays(it.due, 1); $('#ltDate').max = T; $('#ltDate').value = T;
+  setNum('ltFee', '');
+  drawLate();
+  openSheet('lateSheet');
+}
+function drawLate(){
+  const it = lateItem, late = lateMode === 'late', fee = num($('#ltFee').value || 0) || 0;
+  $$('#ltChoice .choice').forEach(b => b.classList.toggle('sel', (b.dataset.late === '1') === late && lateMode !== null));
+  $('#ltLateFields').classList.toggle('hidden', !late);
+  $('#ltCalc').classList.toggle('hidden', !lateMode);
+  $('#ltCalc').innerHTML = !lateMode ? '' : late
+    ? `<div class="calc-line"><span>Installment</span><b>${fmtMoney(it.amount)}</b></div><div class="calc-line"><span>Late charges</span><b class="neg">${fee ? '+ ' + fmtMoney(fee) : '—'}</b></div>
+       <div class="calc-line total"><span>Total paid</span><b>${fmtMoney(it.amount + fee)}</b></div>`
+    : `<div class="calc-line"><span>Recorded as paid on</span><b>${fmtDate(it.due)}</b></div><div class="calc-line total"><span>Amount</span><b>${fmtMoney(it.amount)}</b></div>`;
+  const btn = $('#ltSave'); btn.disabled = !lateMode;
+  btn.textContent = !lateMode ? 'Choose an option' : late ? 'Mark as paid late' : 'Mark as paid on time';
+  footShadow($('#lateSheet'));
+}
+function saveLate(){
+  const it = lateItem; if(!it || !lateMode) return;
+  let date = it.due, fee = 0;
+  if(lateMode === 'late'){
+    clearForm('lateSheet');
+    date = $('#ltDate').value; fee = num($('#ltFee').value || 0) || 0;
+    let bad = setInvalid('ltDateG', !date || diffDays(it.due, date) <= 0 || diffDays(T, date) > 0);
+    bad += setInvalid('ltFeeG', !(fee >= 0 && fee <= 1e5));
+    if(bad) return;
+  }
+  closeSheet('lateSheet');
+  doPay(it.id, { date, fee:round2(fee) });
 }
 
 /* ---------- documents attached to a commitment (shared by both forms) ---------- */
@@ -813,6 +858,8 @@ function openRoundSheet(it){
   $('#rTitle').textContent = `Round ${r} of ${it.members} · ${it.name}`;
   $('#rSub').textContent = `Scheduled ${fmtDate(due)} · ${fmtMoney(it.installment)} per person`;
   $('#rDate').value = diffDays(T, due) > 0 ? T : due;
+  $('#rLateG').classList.toggle('hidden', diffDays(T, due) >= 0); setNum('rLate', '');
+  if(diffDays(T, due) < 0) $('#rSub').textContent = `Overdue — was ${fmtDate(due)} · ${fmtMoney(it.installment)} per person`;
   if(r === 1 && it.agentFirst) roundMode = 'agent';
   else if(it.taken) roundMode = 'full';
   else if(r === it.members) roundMode = 'last';
@@ -901,6 +948,8 @@ function calcRound(){
 async function saveRound(){
   const it = roundChit, r = it.roundsDone + 1, date = $('#rDate').value;
   if(setInvalid('rDateG', !date || diffDays(T, date) > 0)) return;
+  const lateFee = $('#rLateG').classList.contains('hidden') ? 0 : round2(num($('#rLate').value || 0) || 0);
+  if(setInvalid('rLateG', !(lateFee >= 0 && lateFee <= 1e5))) return;
   const c = roundCalc(); if(!c.ok || !roundMode) return;
   const closing = r === it.members, id = it.id, name = it.name;
   closeSheet('roundSheet');
@@ -910,6 +959,7 @@ async function saveRound(){
   else if(roundMode === 'taken') entry = { round:r, date, type:'taken', bid:c.bid, received:c.received, paid:c.paid, share:0 };
   else if(roundMode === 'last') entry = { round:r, date, type:'last', bid:0, received:it.pot, paid:it.installment, share:0 };
   else entry = { round:r, date, type: roundMode === 'agent' ? 'agent' : 'full', paid:it.installment, share:0 };
+  if(lateFee) entry.lateFee = lateFee;
   const t = closing ? { type:'success', title:`${name} completed 🎉`, body:'All rounds done — moved to Closed.' }
     : roundMode === 'commission' ? { type:'success', title:`Round ${r} recorded · +${fmtMoney(c.share)}`, body:`You paid ${fmtMoney(c.paid)}. Commission so far: ${fmtMoney(it.commission + c.share)}.` }
     : roundMode === 'taken' ? { type:'warning', title:`${name} moved to debt`, body:`Received ${fmtMoney(c.received)}. ${fmtMoney(it.installment)} per round for ${c.d} more round${c.d === 1 ? '' : 's'}.` }
@@ -917,6 +967,7 @@ async function saveRound(){
   commit(() => {
     const x = findItem(id);
     x.history.push(entry); x.roundsDone = r; x.paidIn = round2(x.paidIn + entry.paid); x.commission = round2(x.commission + (entry.share || 0));
+    if(lateFee) x.lateFees = round2((x.lateFees || 0) + lateFee);
     if(entry.type === 'taken' || entry.type === 'last') x.taken = { round:r, bid:entry.bid, received:entry.received };
     if(x.roundsDone >= x.members){ x.status = 'closed'; x.closedOn = date; }
   }, t);
@@ -1173,11 +1224,11 @@ async function runExport(){
 ================================================================ */
 function openAlerts(){
   const a = computeAlerts();
-  $('#notifSub').textContent = !st().settings.alertsOn ? 'Reminders are turned off' : a.length ? `${a.length} due soon — tap one to open it` : 'Nothing due soon';
+  $('#notifSub').textContent = !st().settings.alertsOn ? 'Reminders are turned off' : a.length ? (a.some(x => x.d < 0) ? `${a.filter(x => x.d < 0).length} overdue · ${a.length} in total — tap one to open it` : `${a.length} due soon — tap one to open it`) : 'Nothing due soon';
   $('#notifList').innerHTML = !st().settings.alertsOn
     ? `<div class="empty"><div class="em">${e3d('🔕')}</div><b>Reminders are off</b>Turn them on to get notified before due dates.<div class="empty-actions"><button class="btn btn-primary btn-sm" id="turnOnAlerts">Turn on reminders</button></div></div>`
     : a.length ? a.map(({ it, due, d }, i) => { const c = cat(it.catId);
-        const when = d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : `In ${d} days`;
+        const when = d < 0 ? `Overdue ${-d}d` : d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : `In ${d} days`;
         const what = it.kind === 'chit' ? `Round ${it.roundsDone + 1} · ${fmtMoney(it.installment)}` : fmtMoney(it.amount);
         return `<button class="notif-item" data-goto="${it.id}" style="--i:${i}"><span class="notif-ic glyph" style="--accent:${catColor(c)}">${glyphHTML(c, it)}</span>
           <span style="min-width:0"><span class="notif-t">${esc(it.name)}</span><span class="notif-s">${what} · ${fmtDate(due)}</span></span>
@@ -1468,6 +1519,9 @@ function wire(){
   ['bTen', 'bPaidM'].forEach(id => $('#' + id).addEventListener('input', syncBillForm));
   $('#bDue').addEventListener('change', () => { $('#bDuePast').classList.toggle('hidden', !$('#bDue').value || diffDays(T, $('#bDue').value) >= 0); syncBillForm(); });
   $('#billSave').addEventListener('click', saveBill);
+  $('#ltChoice').addEventListener('click', e => { const b = e.target.closest('[data-late]'); if(!b) return; lateMode = b.dataset.late === '1' ? 'late' : 'ontime'; clearForm('lateSheet'); drawLate(); });
+  $('#ltFee').addEventListener('input', drawLate);
+  $('#ltSave').addEventListener('click', saveLate);
   $('#billDelete').addEventListener('click', deleteBill);
   ['#bFiles', '#cFiles'].forEach(s => $(s).addEventListener('click', attClick));
   $('#filePicker').addEventListener('change', e => { const f = e.target.files?.[0]; if(f) attPicked(f); });
@@ -1587,7 +1641,7 @@ export function startApp(u, { logout }){
   const a = computeAlerts().filter(x => x.d <= 1);
   if(a.length && day !== T){
     localStorage.setItem('finly-due-toast', T);
-    setTimeout(() => toast({ type:'warning', title: a.length === 1 ? `${a[0].it.name} is due ${a[0].d === 0 ? 'today' : 'tomorrow'}` : `${a.length} payments due soon`, body: a.length > 1 ? a.slice(0, 2).map(x => x.it.name).join(', ') + (a.length > 2 ? '…' : '') : '', ms:5500 }), 900);
+    setTimeout(() => toast({ type:'warning', title: a.length === 1 ? (a[0].d < 0 ? `${a[0].it.name} is overdue` : `${a[0].it.name} is due ${a[0].d === 0 ? 'today' : 'tomorrow'}`) : a.some(x => x.d < 0) ? `${a.filter(x => x.d < 0).length} overdue, ${a.length} need attention` : `${a.length} payments due soon`, body: a.length > 1 ? a.slice(0, 2).map(x => x.it.name).join(', ') + (a.length > 2 ? '…' : '') : '', ms:5500 }), 900);
   }
 }
 export function onResumeApp(){

@@ -251,11 +251,10 @@
     </div>
 
     <div class="acc static" data-acc="remind">
-      <div class="acc-head"><div class="acc-toggle"><span class="acc-ic"><img class="e3d" src="./e3d/1f514.webp" alt="" draggable="false"></span><span class="section-title">Reminders</span></div> <button type="button" class="info-i" data-info="Set when to remind per category above, or per entry when you add it. Default: 1 day before. Reminders never come after the due date." aria-label="More info">i</button></div>
       <div class="acc-body"><div class="acc-inner">
         <div class="card list">
           <button class="setting-row" id="alertsRow">
-            <div class="setting-left"><img class="e3d set-ic" src="./e3d/23f0.webp" alt="" draggable="false"><div><div class="setting-label">Due-date reminders</div><div class="setting-sub" id="alertsSub">Phone notification at 9 AM</div></div></div>
+            <div class="setting-left"><img class="e3d set-ic" src="./e3d/23f0.webp" alt="" draggable="false"><div><div class="setting-label">Due-date reminders <span class="info-i" role="button" tabindex="0" data-info="Set when to remind per category above, or per entry when you add it. Default: 1 day before. Reminders never come after the due date." aria-label="More info">i</span></div><div class="setting-sub" id="alertsSub">Phone notification at 9 AM</div></div></div>
             <span class="switch on" id="alertsSwitch" role="switch" aria-checked="true"></span>
           </button>
         </div>
@@ -263,11 +262,10 @@
     </div>
 
     <div class="acc static" data-acc="sync">
-      <div class="acc-head"><div class="acc-toggle"><span class="acc-ic"><img class="e3d" src="./e3d/2601.webp" alt="" draggable="false"></span><span class="section-title">Data &amp; sync</span></div> <button type="button" class="info-i" data-info="Everything is saved on this phone first and backed up to your account whenever you&#39;re online. Green dot = synced, orange = syncing, red = offline." aria-label="More info">i</button></div>
       <div class="acc-body"><div class="acc-inner">
         <div class="card list">
           <div class="setting-row static">
-            <div class="setting-left"><img class="e3d set-ic" src="./e3d/2601.webp" alt="" draggable="false"><div><div class="setting-label" id="syncLabel">Synced</div><div class="setting-sub" id="syncSub">—</div></div></div>
+            <div class="setting-left"><img class="e3d set-ic" src="./e3d/2601.webp" alt="" draggable="false"><div><div class="setting-label"><span id="syncLabel">Synced</span> <span class="info-i" role="button" tabindex="0" data-info="Everything is saved on this phone first and backed up to your account whenever you&#39;re online. Green dot = synced, orange = syncing, red = offline." aria-label="More info">i</span></div><div class="setting-sub" id="syncSub">—</div></div></div>
             <button class="btn btn-secondary btn-sm" id="syncNowBtn">Sync now</button>
           </div>
         </div>
@@ -275,7 +273,6 @@
     </div>
 
     <div class="acc static" data-acc="about">
-      <div class="acc-head"><div class="acc-toggle"><span class="acc-ic"><img class="e3d" src="./e3d/2139.webp" alt="" draggable="false"></span><span class="section-title">About</span></div></div>
       <div class="acc-body"><div class="acc-inner">
         <div id="updateSlot"></div>
         <div class="card list">
@@ -381,6 +378,7 @@
   <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="rTitle">Round</div><div class="sheet-sub" id="rSub"></div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
   <div class="sheet-scroll">
     <div id="rBody"></div>
+    <div class="fgroup hidden" id="rLateG"><label for="rLate">Late fee (if any) <button type="button" class="info-i" data-info="This round is past its date. If the agent charged a penalty for paying late, enter it here — it's tracked separately and doesn't count as savings." aria-label="More info">i</button></label><div class="money-wrap"><input id="rLate" type="text" inputmode="decimal" data-money placeholder="0" autocomplete="off"></div><div class="ferr">Enter ₹0 – ₹1,00,000.</div></div>
     <div class="fgroup" id="rDateG" style="margin-bottom:0"><label for="rDate">Paid on</label><input id="rDate" type="date"><div class="ferr">Pick a date that isn't in the future.</div></div>
   </div>
   <div class="sheet-foot"><button class="btn btn-secondary" data-close>Cancel</button><button class="btn btn-primary btn-grow" id="rSave">Record round</button></div>
@@ -510,6 +508,25 @@
     <div class="fgroup" id="bkIfscG" style="margin-bottom:0"><label for="bkIfsc">IFSC <span class="req">*</span> <button type="button" class="info-i" data-info="Type the 11-character IFSC — the bank and branch are filled in automatically when you&#39;re online." aria-label="More info">i</button></label><input id="bkIfsc" maxlength="11" placeholder="e.g. SBIN0001234" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase;letter-spacing:1px"><div class="ferr" id="bkIfscErr">IFSC is 11 characters: 4 letters, 0, then 6 letters or digits.</div><div class="fhint" id="bkIfscHint">Printed on your cheque book or passbook.</div><div class="lookup-card hidden" id="bkBranch"></div></div>
   </div>
   <div class="sheet-foot"><button class="btn btn-danger hidden" id="bkDelete">Delete</button><button class="btn btn-primary btn-grow" id="bkSave">Add bank account</button></div>
+</div></div>
+
+<div class="sheet-overlay" id="lateSheet"><div class="sheet">
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="ltTitle">Paid late?</div><div class="sheet-sub" id="ltSub"></div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-scroll">
+    <span class="flabel">When did you pay it?</span>
+    <div class="choice-grid" id="ltChoice">
+      <button type="button" class="choice" data-late="0"><span class="ch-ic"><img class="e3d" src="./e3d/2705.webp" alt="" draggable="false"></span><span class="ch-t">On time</span><span class="ch-s">Paid by the due date — I just forgot to mark it</span></button>
+      <button type="button" class="choice taken" data-late="1"><span class="ch-ic"><img class="e3d" src="./e3d/23f0.webp" alt="" draggable="false"></span><span class="ch-t">After the due date</span><span class="ch-s">Paid late, maybe with a late fee or bounce charge</span></button>
+    </div>
+    <div class="hidden" id="ltLateFields">
+      <div class="frow">
+        <div class="fgroup" id="ltDateG"><label for="ltDate">Paid on <span class="req">*</span></label><input id="ltDate" type="date"><div class="ferr" id="ltDateErr">Pick a date after the due date, up to today.</div></div>
+        <div class="fgroup" id="ltFeeG"><label for="ltFee">Late charges <button type="button" class="info-i" data-info="Any late fee, penal interest or e-mandate bounce charge the bank or lender added. Leave 0 if there was none." aria-label="More info">i</button></label><div class="money-wrap"><input id="ltFee" type="text" inputmode="decimal" data-money placeholder="0" autocomplete="off"></div><div class="ferr">Enter ₹0 – ₹1,00,000.</div></div>
+      </div>
+    </div>
+    <div class="calc-box hidden" id="ltCalc" style="margin-bottom:0"></div>
+  </div>
+  <div class="sheet-foot"><button class="btn btn-secondary" data-close>Cancel</button><button class="btn btn-primary btn-grow" id="ltSave" disabled>Choose an option</button></div>
 </div></div>
 
 <div class="sheet-overlay" id="confirmSheet"><div class="sheet">
