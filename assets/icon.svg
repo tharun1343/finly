@@ -1,8 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7C9BFF"/><stop offset="1" stop-color="#5CC8FF"/></linearGradient>
-  </defs>
-  <rect width="1024" height="1024" rx="230" fill="url(#g)"/>
-  <path d="M372 274h330v104H492v118h178v102H492v174H372z" fill="#07112A"/>
-  <circle cx="676" cy="720" r="58" fill="#F2B84B"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><defs><linearGradient id="gold" gradientUnits="userSpaceOnUse" x1="300" y1="200" x2="720" y2="840"><stop offset="0" stop-color="#FCE6AE"/><stop offset=".55" stop-color="#E2AA4C"/><stop offset="1" stop-color="#B8812E"/></linearGradient><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#16264F"/><stop offset="1" stop-color="#060A17"/></linearGradient><radialGradient id="hl" cx=".3" cy=".25" r=".7"><stop offset="0" stop-color="#3A5BC7" stop-opacity=".35"/><stop offset="1" stop-color="#3A5BC7" stop-opacity="0"/></radialGradient></defs><rect width="1024" height="1024" fill="url(#bg)"/><rect width="1024" height="1024" fill="url(#hl)"/><circle cx="512" cy="512" r="300" fill="none" stroke="url(#gold)" stroke-width="24" stroke-linecap="round" stroke-dasharray="1660 225"/><path d="M402 352H622V424H474V484H574V548H474V672H402Z" fill="url(#gold)" stroke="url(#gold)" stroke-width="16" stroke-linejoin="round"/></svg>

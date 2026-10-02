@@ -1,6 +1,8 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
-    android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#FFFFFFFF" android:pathData="M8,5h8.5v2.6h-5.4v2.9h4.6v2.5h-4.6v6h-3.1z"/>
-    <path android:fillColor="#FFFFFFFF" android:pathData="M15.8,17.2m-1.6,0a1.6,1.6 0,1 1,3.2 0a1.6,1.6 0,1 1,-3.2 0"/>
+    android:viewportWidth="1024" android:viewportHeight="1024">
+    <!-- open ring (≈88% of a circle, gap at the upper right) -->
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="64" android:strokeLineCap="round"
+        android:pathData="M812,512 A300,300 0 1,1 731,307"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M394,344H630V432H482V476H582V556H482V680H394Z"/>
 </vector>

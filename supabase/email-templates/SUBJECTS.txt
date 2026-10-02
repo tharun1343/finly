@@ -1,0 +1,2 @@
+Magic Link subject:      {{ .Token }} is your Finly sign-in code
+Confirm signup subject:  Welcome to Finly — your code is {{ .Token }}

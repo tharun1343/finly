@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="supported-color-schemes" content="dark light">
+<title>Welcome to Finly</title>
+</head>
+<body style="margin:0;padding:0;background:#0A0F1D;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#0A0F1D;">Welcome to Finly! Your code is {{ .Token }}. It expires in 10 minutes.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0A0F1D" style="background:#0A0F1D;">
+  <tr><td align="center" style="padding:32px 16px 40px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;">
+      <tr><td style="padding:0 4px 20px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td><img src="https://tharun1343.github.io/finly/email-logo.png" width="40" height="40" alt="Finly" style="display:block;border:0;border-radius:11px;"></td>
+          <td style="padding-left:12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:20px;font-weight:800;letter-spacing:-0.3px;color:#F2F4FA;">Finly</td>
+        </tr></table>
+      </td></tr>
+      <tr><td bgcolor="#111A2E" style="background:#111A2E;border:1px solid #1E2A47;border-radius:22px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr><td height="4" bgcolor="#E2AA4C" style="height:4px;line-height:4px;font-size:0;background:#E2AA4C;background-image:linear-gradient(90deg,#7C9BFF,#5CC8FF 55%,#E2AA4C);border-radius:22px 22px 0 0;">&nbsp;</td></tr>
+          <tr><td style="padding:30px 28px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+            <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#E2AA4C;">Welcome</p>
+            <h1 style="margin:0 0 10px;font-size:24px;line-height:1.3;font-weight:800;color:#F2F4FA;">Confirm your email</h1>
+            <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#A3ABC0;">Enter this code in the Finly app to finish creating your account.</p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+              <td align="center" bgcolor="#0A0F1D" style="background:#0A0F1D;border:1px solid #2A3A63;border-radius:16px;padding:22px 12px;">
+                <span style="font-family:'SF Mono',Menlo,Consolas,'Courier New',monospace;font-size:36px;font-weight:800;letter-spacing:10px;padding-left:10px;color:#FCE6AE;">{{ .Token }}</span>
+              </td>
+            </tr></table>
+            <p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#7E879E;text-align:center;">Expires in 10 minutes</p>
+            <p style="margin:22px 0 0;padding-top:18px;border-top:1px solid #1E2A47;font-size:13px;line-height:1.6;color:#7E879E;">Didn't sign up for Finly? Ignore this email and no account will be activated.</p>
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td align="center" style="padding:22px 12px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.7;color:#5E667C;">
+        Finly · Debts, chits &amp; savings in one place<br>
+        Never share this code with anyone — Finly will never ask for it.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>
