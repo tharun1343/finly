@@ -7,11 +7,17 @@ const OTP_TTL = 10 * 60 * 1000, RESEND_WAIT = 60 * 1000, MAX_TRIES = 3, LOCK_MS 
 const otp = { email:'', name:'', from:'signin', sentAt:0, expiresAt:0, tries:0, lockedUntil:0, verifying:false, timer:null };
 let handlers = { onVerified(){} };
 
+const otpPending = () => !!otp.email && Date.now() < otp.expiresAt && otp.tries < MAX_TRIES;
 export function showAuth(screen){
   document.body.classList.add('auth-mode');
   $('#app').classList.add('hidden'); $('#auth').classList.remove('hidden');
   $$('.auth-screen').forEach(s => s.classList.toggle('active', s.id === 'scr-' + screen));
   if(screen !== 'otp') clearInterval(otp.timer);
+  const pending = otpPending();
+  $$('.have-code').forEach(el => {
+    el.classList.toggle('hidden', !pending);
+    if(pending) el.querySelector('button').textContent = `I already have a code for ${maskEmail(otp.email)}`;
+  });
   window.scrollTo(0, 0);
 }
 export function currentAuthScreen(){ return $('.auth-screen.active')?.id?.replace('scr-', '') || ''; }
@@ -30,6 +36,7 @@ function maskEmail(e){ const [u, d] = e.split('@'); return (u.length <= 2 ? u[0]
 async function requestCode(from, email, name, btn){
   const alertId = from === 'signup' ? 'signupAlert' : 'signinAlert';
   showAlert(alertId, '');
+  if(email === otp.email && otpPending() && Date.now() - otp.sentAt < RESEND_WAIT){ otp.from = from; openOtp(); return; }
   setBusy(btn, true, 'Sending code…');
   try{
     await sendCode(email, name);
@@ -44,7 +51,8 @@ function openOtp(){
   $('#otpSub').innerHTML = `We've sent a 6-digit code to <b>${esc(maskEmail(otp.email))}</b>. It's valid for 10 minutes.`;
   boxes().forEach(b => { b.value = ''; b.disabled = false; b.classList.remove('filled'); });
   $('#otpRow').classList.remove('ok');
-  otpStatus('info', 'The code is checked as soon as you enter the 6th digit.');
+  otpStatus('info', '');
+  syncVerifyBtn();
   showAuth('otp');
   clearInterval(otp.timer); otp.timer = setInterval(tick, 500); tick();
   setTimeout(() => boxes()[0].focus(), 350);
@@ -56,6 +64,7 @@ function tick(){
   $('#otpExpiry').textContent = expired ? 'Code expired' : `Code expires in ${mmss(otp.expiresAt - now)}`;
   if(otp.lockedUntil && !locked && otp.tries >= MAX_TRIES){ otp.lockedUntil = 0; otpStatus('info', 'You can request a new code now.'); }
   if(expired && !otp.expiredShown){ otp.expiredShown = true; boxes().forEach(b => b.disabled = true); otpStatus('err', 'This code has expired. Request a new one.'); }
+  if(!otp.verifying) syncVerifyBtn();
   if(locked){ rb.disabled = true; rb.textContent = `New code in ${mmss(otp.lockedUntil - now)}`; return; }
   if(otp.tries >= MAX_TRIES || expired){ rb.disabled = false; rb.textContent = 'Send new code'; return; }
   const wait = otp.sentAt + RESEND_WAIT - now; rb.disabled = wait > 0; rb.textContent = wait > 0 ? `Resend in ${mmss(wait)}` : 'Resend code';
@@ -76,15 +85,19 @@ function fillFrom(i, digits){
   for(let k = 0; k < digits.length && i + k < 6; k++) bs[i + k].value = digits[k];
   bs[Math.min(i + digits.length, 5)].focus(); checkOtp();
 }
+const enteredCode = () => boxes().map(b => b.value).join('');
+const canVerify = () => !otp.verifying && Date.now() < otp.expiresAt && Date.now() >= otp.lockedUntil && otp.tries < MAX_TRIES;
+function syncVerifyBtn(){ $('#otpVerifyBtn').disabled = enteredCode().length !== 6 || !canVerify(); }
 function checkOtp(){
-  const bs = boxes();
-  bs.forEach(b => b.classList.toggle('filled', !!b.value));
-  const code = bs.map(b => b.value).join('');
+  boxes().forEach(b => b.classList.toggle('filled', !!b.value));
+  syncVerifyBtn();
+  const code = enteredCode();
   if(code.length === 6 && !otp.verifying) verify(code);   // auto-submit on the 6th digit
 }
 async function verify(code){
   if(Date.now() >= otp.expiresAt || Date.now() < otp.lockedUntil || otp.tries >= MAX_TRIES) return;
   otp.verifying = true; boxes().forEach(b => b.disabled = true); otpStatus('info', 'Checking code…');
+  setBusy($('#otpVerifyBtn'), true, 'Checking…');
   try{
     const u = await verifyCode(otp.email, code);
     $('#otpRow').classList.add('ok'); otpStatus('ok', 'Verified — signing you in…'); clearInterval(otp.timer);
@@ -106,7 +119,7 @@ async function verify(code){
       }
     }
     tick();
-  }finally{ otp.verifying = false; }
+  }finally{ otp.verifying = false; setBusy($('#otpVerifyBtn'), false); syncVerifyBtn(); }
 }
 
 /* ---------- onboarding ---------- */
@@ -144,6 +157,12 @@ export function initAuth(h){
   });
   $('#otpBack').addEventListener('click', () => showAuth(otp.from));
   $('#resendBtn').addEventListener('click', resend);
+  $('#otpVerifyBtn').addEventListener('click', () => {
+    const code = enteredCode();
+    if(code.length !== 6){ otpStatus('err', 'Enter all 6 digits of the code.'); boxes()[code.length]?.focus(); return; }
+    verify(code);
+  });
+  $$('[data-resume-otp]').forEach(b => b.addEventListener('click', () => { if(otpPending()) openOtp(); }));
   boxes().forEach((b, i) => {
     b.addEventListener('input', () => { const v = b.value.replace(/\D/g, ''); if(v.length > 1) return fillFrom(i, v); b.value = v; if(v && i < 5) boxes()[i + 1].focus(); checkOtp(); });
     b.addEventListener('keydown', e => {

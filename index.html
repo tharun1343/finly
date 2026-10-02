@@ -51,6 +51,7 @@
         <div class="ferr">Enter a valid email address.</div></div>
       <button class="btn btn-primary btn-block" type="submit" id="suBtn">Send code</button>
     </form>
+    <div class="auth-foot have-code hidden"><button class="link-btn" data-resume-otp>I already have a code</button></div>
     <div class="auth-foot">Already have an account? <button class="link-btn" data-auth="signin">Sign in</button></div>
   </section>
 
@@ -66,6 +67,7 @@
         <div class="ferr">Enter a valid email address.</div></div>
       <button class="btn btn-primary btn-block" type="submit" id="siBtn">Send code</button>
     </form>
+    <div class="auth-foot have-code hidden"><button class="link-btn" data-resume-otp>I already have a code</button></div>
     <div class="auth-foot">New here? <button class="link-btn" data-auth="signup">Create an account</button></div>
   </section>
 
@@ -81,7 +83,8 @@
       <input class="otp-box" inputmode="numeric" maxlength="1" aria-label="Digit 5">
       <input class="otp-box" inputmode="numeric" maxlength="1" aria-label="Digit 6">
     </div>
-    <div class="otp-status info" id="otpStatus">The code is checked as soon as you enter the 6th digit.</div>
+    <div class="otp-status info" id="otpStatus"></div>
+    <button class="btn btn-primary btn-block" id="otpVerifyBtn" disabled>Verify code</button>
     <div class="otp-meta"><span id="otpExpiry">Code expires in 10:00</span><button class="link-btn" id="resendBtn" disabled>Resend in 1:00</button></div>
     <p class="fine-print">Can't find it? Check your Spam or Promotions folder.</p>
   </section>

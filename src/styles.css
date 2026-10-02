@@ -105,6 +105,7 @@ svg{ flex-shrink:0; }
 @keyframes shake{ 10%,90%{transform:translateX(-2px)} 20%,80%{transform:translateX(4px)} 30%,50%,70%{transform:translateX(-7px)} 40%,60%{transform:translateX(7px)} }
 .otp-status{ min-height:20px; font-size:var(--t-sm); font-weight:600; margin-bottom:6px; }
 .otp-status.err{ color:var(--rose); } .otp-status.info{ color:var(--text-dim); } .otp-status.ok{ color:var(--primary-2); }
+#otpVerifyBtn{ margin:2px 0 6px; }
 .otp-meta{ display:flex; justify-content:space-between; align-items:center; font-size:var(--t-sm); color:var(--text-dim); margin-top:8px; }
 .spinner{ width:16px; height:16px; border-radius:50%; border:2px solid color-mix(in srgb, var(--on-accent) 25%, transparent); border-top-color:var(--on-accent); animation: spin .7s linear infinite; display:inline-block; }
 .spinner.dim{ border-color:var(--glass-border); border-top-color:var(--primary-2); width:12px; height:12px; }
