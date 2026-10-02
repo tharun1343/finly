@@ -51,7 +51,8 @@ export async function signOut(){
 }
 
 /* ---------------- local store ---------------- */
-export const DEFAULT_SETTINGS = { name:'', income:null, theme:'dark', text:'md', alertsOn:true, palette:'sapphire', onboarded:false, banks:[] };
+export const DEFAULT_SETTINGS = { name:'', income:null, theme:'dark', text:'md', alertsOn:true, palette:'sapphire', onboarded:false, banks:[],
+  company:'', dob:'', pin:'', city:'', state:'', avatar:null };
 const defaultCats = () => [
   { id:'emi', name:'EMI', emoji:'🏦', kind:'bill', ci:0, reminders:[1], _u:0 },
   { id:'chit', name:'Chit Fund', emoji:'🤝', kind:'chit', ci:1, reminders:[1], builtin:true, _u:0 },

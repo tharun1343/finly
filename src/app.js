@@ -6,7 +6,9 @@ import { toast, layoutFab, openSheet, closeSheet, confirmBox, setInvalid, showAl
   moveThumb, bindSeg, moveAllThumbs, setNum, bindNumeric, enhanceSelect, setSelect, makeReminderPicker, remSummary, withTransition, flip, handleBackInOverlays, footShadow, fmtNumInput } from './ui.js';
 import { isNative, APP_VERSION, APK_URL, setBarsStyle, scheduleReminders, notifyPermission, requestNotifyPermission, saveFile, checkForUpdate, openExternal } from './native.js';
 import { paymentRows, summaryRow, buildCsv, buildPdf } from './export.js';
-import { BANK_GROUPS, OTHER_BANK, findBank, bankFromIfsc, shortName, IFSC_RE, maskAcct } from './banks.js';
+import { BANK_GROUPS, OTHER_BANK, findBank, bankFromIfsc, shortName, IFSC_RE, maskAcct, bankBadgeHTML, bankColor, lookupIfsc } from './banks.js';
+import { PIN_RE, lookupPin, ageFrom } from './places.js';
+import { E3D, AVATARS, e3dCode } from './e3d-list.js';
 
 const st = () => store.state;
 let user = { id:'', email:'', name:'' };
@@ -27,7 +29,7 @@ const perLabel = n => PER[n] || `${n} months`;
 const announced = it => it.kind === 'chit' && it.nextDate && it.nextDateRound === it.roundsDone + 1;
 const nextDue = it => it.kind === 'chit' ? (announced(it) ? it.nextDate : roundDate(it, it.roundsDone + 1)) : it.due;
 const fileCount = it => (it.files || []).length;
-const bankTagHTML = it => { const b = it.bankId && (store.state.settings.banks || []).find(x => x.id === it.bankId); return b ? `<span class="bank-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 10h18L12 4 3 10ZM5 10v8M19 10v8M9.5 10v8M14.5 10v8M3 20h18"/></svg>${esc(shortName(b.name))} ${maskAcct(b.acct)}</span>` : ''; };
+const bankTagHTML = it => { const b = it.bankId && (store.state.settings.banks || []).find(x => x.id === it.bankId); return b ? `<span class="bank-tag" style="--bk:${bankColor(b.name)}"><span class="bk-dot"></span>${esc(shortName(b.name))} ${maskAcct(b.acct)}</span>` : ''; };
 const clipHTML = it => fileCount(it) ? `<button class="clip-badge" data-act="files" aria-label="${fileCount(it)} documents"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>${fileCount(it)}</button>` : '';
 const alertWindow = it => Math.max(7, ...effReminders(it));
 const paidRecently = it => it.kind === 'bill' && !!it.lastPaid && diffDays(T, it.due) > alertWindow(it);
@@ -98,7 +100,10 @@ function setSetting(patch){ commit(() => Object.assign(st().settings, patch)); a
 const seen = new Set(), prevPct = {}, lastNum = {};
 let filter = 'all', sortMode = 'due', page = 'home', byView = 'active';
 
-function glyphHTML(c){ return c && c.emoji ? esc(c.emoji) : `<span class="glyph-letter">${esc((c?.name || '?').charAt(0).toUpperCase())}</span>`; }
+const HAS3D = new Set(Object.keys(E3D).map(e3dCode));
+/** A bundled 3D image for the emoji when we have one, else the plain emoji. */
+const e3d = (emoji, cls = '') => emoji && HAS3D.has(e3dCode(emoji)) ? `<img class="e3d ${cls}" src="./e3d/${e3dCode(emoji)}.webp" alt="" draggable="false">` : esc(emoji || '');
+function glyphHTML(c){ return c && c.emoji ? e3d(c.emoji) : `<span class="glyph-letter">${esc((c?.name || '?').charAt(0).toUpperCase())}</span>`; }
 function countTo(el, key, to){
   const from = lastNum[key] ?? 0; lastNum[key] = to;
   if(from === to || document.hidden || reduceMotion()){ el.textContent = fmtMoney(to); return; }
@@ -168,7 +173,24 @@ function renderHeader(){
   $('#hdrName').textContent = displayName();
   $('#pfName').textContent = displayName();
   $('#pfEmail').textContent = user.email;
-  $('#pfAvatar').textContent = displayName().charAt(0).toUpperCase();
+  renderAvatar();
+  const se = st().settings, age = ageFrom(se.dob), tags = [];
+  if(se.company) tags.push(['🏢', se.company]);
+  if(age != null) tags.push(['🎂', `${age} yrs`]);
+  if(se.city) tags.push(['📍', se.city]);
+  $('#pfTags').innerHTML = tags.map(([e, t]) => `<span class="pf-tag">${e3d(e)}${esc(t)}</span>`).join('');
+  $('#pfTags').classList.toggle('hidden', !tags.length);
+}
+function avatarHTML(){
+  const a = st().settings.avatar;
+  if(a?.type === 'photo' && /^data:image\/(jpeg|png|webp);base64,/.test(a.v)) return `<img class="pa-photo" src="${a.v}" alt="">`;
+  if(a?.type === 'emoji' && a.v) return e3d(a.v, 'pa-3d');
+  return `<span class="pa-letter">${esc(displayName().charAt(0).toUpperCase())}</span>`;
+}
+function renderAvatar(){
+  const a = st().settings.avatar, kind = a?.type === 'photo' ? 'photo' : a?.type === 'emoji' ? 'emoji' : 'letter';
+  $('#pfAvatarFace').innerHTML = avatarHTML();
+  $('#pfAvatar').dataset.kind = kind;
 }
 
 function renderHome(){
@@ -186,13 +208,13 @@ function renderHome(){
   act.forEach(i => counts[i.catId] = (counts[i.catId] || 0) + 1);
   if(filter !== 'all' && !counts[filter]) filter = 'all';
   $('#chips').innerHTML = act.length ? `<button class="chip ${filter === 'all' ? 'active' : ''}" data-f="all">All <span class="n">${act.length}</span></button>` +
-    st().cats.filter(c => counts[c.id]).map(c => `<button class="chip ${filter === c.id ? 'active' : ''}" data-f="${c.id}">${c.emoji ? esc(c.emoji) + ' ' : ''}${esc(c.name)} <span class="n">${counts[c.id]}</span></button>`).join('') : '';
+    st().cats.filter(c => counts[c.id]).map(c => `<button class="chip ${filter === c.id ? 'active' : ''}" data-f="${c.id}">${c.emoji ? e3d(c.emoji, 'chip-3d') : ''}${esc(c.name)} <span class="n">${counts[c.id]}</span></button>`).join('') : '';
   const list = act.filter(i => filter === 'all' || i.catId === filter);
   list.sort(sortMode === 'due' ? (a, b) => dayNum(nextDue(a)) - dayNum(nextDue(b)) : (a, b) => (b.kind === 'chit' ? b.installment : b.amount) - (a.kind === 'chit' ? a.installment : a.amount));
   $('#activeCount').textContent = list.length ? `(${list.length})` : '';
   $('#sortBtn').classList.toggle('hidden', list.length < 2);
   $('#cardList').innerHTML = list.length ? list.map((it, i) => it.kind === 'chit' ? chitCompact(it, i) : billCard(it, i)).join('')
-    : `<div class="empty"><div class="em">🗂️</div><b>Nothing tracked yet</b>Add your EMIs, bills and chit funds to see what's due and when you'll be debt-free.
+    : `<div class="empty"><div class="em">${e3d('🗂️')}</div><b>Nothing tracked yet</b>Add your EMIs, bills and chit funds to see what's due and when you'll be debt-free.
        <div class="empty-actions"><button class="btn btn-primary btn-sm" data-empty="bill">Add EMI or bill</button><button class="btn btn-secondary btn-sm" data-empty="chit">Add chit fund</button></div></div>`;
 }
 
@@ -241,22 +263,21 @@ function chitDetail(it, i){
       <div class="metric"><div class="fig-label">Still owe</div><div class="fig-value neg">${fmtMoney(owe)}</div><div class="fig-sub">${left} round${left === 1 ? '' : 's'} × ${fmtMoney(it.installment)}</div></div>
       <div class="metric"><div class="fig-label">Next due${announced(it) ? ' · announced' : ''}</div><div class="fig-value">${fmtDate(due)}</div><div class="fig-sub">Round ${r} of ${it.members}</div>${dateBtn}</div>
       <div class="metric"><div class="fig-label">${net >= 0 ? 'Projected gain' : 'Projected cost'}</div><div class="fig-value ${net >= 0 ? 'pos' : 'neg'}">${fmtMoney(Math.abs(net))}</div><div class="fig-sub">Received − total you'll pay</div></div>`;
-    note = `You took the pot in round ${it.taken.round}. You now pay the <b>full ${fmtMoney(it.installment)}</b> every round until it ends — counted as <b>debt</b>.`;
+    note = `You took the pot in round ${it.taken.round}. You now pay the full ${fmtMoney(it.installment)} every round until it ends — counted as debt.`;
   } else {
     metrics = `<div class="metric"><div class="fig-label">Paid in</div><div class="fig-value">${fmtMoney(it.paidIn)}</div><div class="fig-sub">${it.roundsDone} round${it.roundsDone === 1 ? '' : 's'}</div></div>
       <div class="metric"><div class="fig-label">Commission so far</div><div class="fig-value pos">+${fmtMoney(it.commission)}</div><div class="fig-sub">Your share of winning bids</div></div>
       <div class="metric"><div class="fig-label">Next auction${announced(it) ? ' · announced' : ''}</div><div class="fig-value">${fmtDate(due)}</div><div class="fig-sub">Round ${r} of ${it.members}</div>${dateBtn}</div>
       <div class="metric"><div class="fig-label">Still waiting</div><div class="fig-value">${it.members - it.roundsDone}</div><div class="fig-sub">people incl. you</div></div>`;
-    note = `You haven't taken the pot yet. Each round you get a share of the winning bid, so you pay less — counted as <b>savings</b> until you take it.`;
+    note = `You haven't taken the pot yet. Each round you get a share of the winning bid, so you pay less — counted as savings until you take it.`;
   }
   const hist = it.history.length ? [...it.history].reverse().map(h => `<div class="h-row"><span class="h-round">R${h.round}</span><span class="h-desc">${histDesc(h, fmtMoney, true)}<br><span style="color:var(--text-faint)">${fmtDate(h.date)}</span></span><span class="h-amt">${fmtMoney(h.paid)}</span></div>`).join('')
     : '<div class="h-desc" style="padding:6px 0">No rounds recorded yet.</div>';
   return `<article class="chit-card ${enterCls('w_' + it.id)}" data-id="${it.id}" data-state="${taken ? 'taken' : 'saving'}" style="--i:${i}">
-    <div class="chit-head"><div style="min-width:0"><div class="chit-name">${c?.emoji ? esc(c.emoji) + ' ' : ''}${esc(it.name)} ${clipHTML(it)}</div><div class="chit-meta">${meta}</div></div>
+    <div class="chit-head"><div style="min-width:0"><div class="chit-name">${c?.emoji ? e3d(c.emoji, 'name-3d') : ''}${esc(it.name)} <button type="button" class="info-i" data-info="${esc(note)}" aria-label="What this means">i</button> ${clipHTML(it)}</div><div class="chit-meta">${meta}</div></div>
       <span class="status-pill ${taken ? 'debt' : 'save'}">${taken ? 'Debt' : 'Savings'}</span></div>
     <div class="progress-row"><div class="progress-labels"><span>Rounds <b>${it.roundsDone} of ${it.members}</b></span><span>${Math.round(it.roundsDone / it.members * 100)}%</span></div>${barHTML('w_' + it.id, Math.round(it.roundsDone / it.members * 100))}</div>
     <div class="metric-grid">${metrics}</div>
-    <div class="chit-note">${note}</div>
     <div class="chit-actions">
       <button class="btn btn-primary btn-grow" data-act="pay">${ICON.check}Record round ${r}</button>
       <button class="round-btn ghost" data-act="edit" aria-label="Edit">${ICON.edit}</button>
@@ -273,7 +294,7 @@ function renderWallet(){
   $('#whDebtFoot').textContent = `${t.takenCount} taken · full amount each round`;
   const chits = activeItems().filter(i => i.kind === 'chit');
   const open = new Set($$('#chitList .history.open').map(h => h.closest('[data-id]').dataset.id));
-  $('#chitList').innerHTML = chits.length ? chits.map(chitDetail).join('') : '<div class="empty"><div class="em">🤝</div><b>No active chit funds</b>Tap + to add one.</div>';
+  $('#chitList').innerHTML = chits.length ? chits.map(chitDetail).join('') : `<div class="empty"><div class="em">${e3d('🤝')}</div><b>No active chit funds</b>Tap + to add one.</div>`;
   open.forEach(id => $(`#chitList [data-id="${id}"] .history`)?.classList.add('open'));
   const cl = closedItems();
   $('#closedCount').textContent = cl.length ? `(${cl.length})` : '';
@@ -307,7 +328,7 @@ function renderBell(){
 
 function renderSync(s = syncStatus()){
   const pill = $('#syncPill'), txt = $('#syncText');
-  let cls = '', label, long;
+  let cls = 'synced', label, long;
   if(s.running){ cls = 'syncing'; label = 'Syncing'; long = 'Syncing…'; }
   else if(s.error === 'auth'){ cls = 'error'; label = 'Sign in'; long = 'Signed out — sign in again to sync'; }
   else if(!s.online){ cls = 'offline'; label = s.pending ? `Offline · ${s.pending}` : 'Offline'; long = s.pending ? `Offline — ${s.pending} change${s.pending > 1 ? 's' : ''} will upload when you're back online` : 'Offline — everything is saved on this phone'; }
@@ -791,8 +812,8 @@ function drawRoundBody(){
   const d = it.members - r;
   body.innerHTML = `<span class="flabel">What happened in this round?</span>
     <div class="choice-grid">
-      <button type="button" class="choice ${roundMode === 'commission' ? 'sel' : ''}" data-mode="commission"><span class="ch-ic">🪙</span><span class="ch-t">Got commission</span><span class="ch-s">Someone else won the auction</span></button>
-      <button type="button" class="choice taken ${roundMode === 'taken' ? 'sel' : ''}" data-mode="taken"><span class="ch-ic">🤝</span><span class="ch-t">I took the pot</span><span class="ch-s">I won the auction this round</span></button>
+      <button type="button" class="choice ${roundMode === 'commission' ? 'sel' : ''}" data-mode="commission"><span class="ch-ic">${e3d('🪙')}</span><span class="ch-t">Got commission</span><span class="ch-s">Someone else won the auction</span></button>
+      <button type="button" class="choice taken ${roundMode === 'taken' ? 'sel' : ''}" data-mode="taken"><span class="ch-ic">${e3d('🤝')}</span><span class="ch-t">I took the pot</span><span class="ch-s">I won the auction this round</span></button>
     </div><div id="rPanel"></div>`;
   $$('.choice', body).forEach(b => b.addEventListener('click', () => { roundMode = b.dataset.mode; clearForm('roundSheet'); drawRoundBody(); setTimeout(() => $('#rAmt')?.focus({ preventScroll:true }), 60); }));
   const panel = $('#rPanel');
@@ -888,7 +909,7 @@ function drawCatPreview(bump){
   $$('.emoji-btn').forEach(b => b.classList.toggle('sel', b.dataset.e === pickedEmoji));
   const name = $('#catName').value.trim(), g = $('#catPrevGlyph');
   g.style.setProperty('--accent', catColor(editingCat || { ci: nextCi() }));
-  g.innerHTML = pickedEmoji ? esc(pickedEmoji) : `<span class="glyph-letter">${esc((name || '?').charAt(0).toUpperCase())}</span>`;
+  g.innerHTML = pickedEmoji ? e3d(pickedEmoji) : `<span class="glyph-letter">${esc((name || '?').charAt(0).toUpperCase())}</span>`;
   if(bump){ g.classList.remove('bump'); void g.offsetWidth; g.classList.add('bump'); }
   $('#catPrevName').textContent = name || 'Category name';
   $('#catPrevSub').textContent = pickedEmoji ? 'Custom icon' : 'No icon picked — the first letter is used';
@@ -930,20 +951,96 @@ function deleteCat(){
 ================================================================ */
 function openProfileSheet(focusIncome){
   clearForm('profileSheet');
+  const se = st().settings;
   $('#pfSheetEmail').textContent = user.email;
   $('#pfNameIn').value = displayName();
-  setNum('pfIncomeIn', st().settings.income ?? '');
+  $('#pfCompany').value = se.company || '';
+  $('#pfDob').value = se.dob || ''; $('#pfDob').max = T;
+  $('#pfPin').value = se.pin || '';
+  $('#pfCity').value = se.city || '';
+  pinState = { pin: se.pin || '', state: se.state || '' };
+  setNum('pfIncomeIn', se.income ?? '');
+  drawAge(); drawPinHint(se.pin && se.city ? `${se.city}${se.state ? ', ' + se.state : ''}` : '', 'ok');
   openSheet('profileSheet');
   if(focusIncome) setTimeout(() => $('#pfIncomeIn').focus(), 420);
+}
+function drawAge(){
+  const v = $('#pfDob').value, age = v && diffDays(T, v) < 0 ? ageFrom(v) : null;
+  $('#pfAge span').textContent = age == null ? '—' : `${age} year${age === 1 ? '' : 's'}`;
+  $('#pfAge').classList.toggle('filled', age != null);
+}
+let pinState = { pin:'', state:'' }, pinSeq = 0;
+function drawPinHint(text, kind){
+  const h = $('#pfPinHint');
+  h.innerHTML = !text ? '' : kind === 'busy' ? `<span class="spinner dim"></span>${esc(text)}` : kind === 'ok' ? `${e3d('📍')}${esc(text)}` : esc(text);
+  h.className = 'fhint pin-hint ' + (kind || '');
+}
+async function onPinInput(){
+  const el = $('#pfPin'), pin = el.value.replace(/\D/g, '').slice(0, 6);
+  if(el.value !== pin) el.value = pin;
+  $('#pfPinG').classList.remove('invalid');
+  if(pin.length < 6){ drawPinHint(pin ? 'Keep typing — 6 digits' : '', ''); return; }
+  if(!PIN_RE.test(pin)){ setInvalid('pfPinG', true, 'pfPinErr', 'That isn\'t a valid PIN code.'); drawPinHint('', ''); return; }
+  if(pin === pinState.pin && $('#pfCity').value) return;
+  const seq = ++pinSeq;
+  drawPinHint('Finding your city…', 'busy');
+  try{
+    const r = await lookupPin(pin);
+    if(seq !== pinSeq) return;
+    if(!r){ drawPinHint('We couldn\'t find this PIN code — type your city instead.', 'warn'); pinState = { pin, state:'' }; return; }
+    $('#pfCity').value = r.city; pinState = { pin, state:r.state };
+    $('#pfCity').classList.remove('pop'); void $('#pfCity').offsetWidth; $('#pfCity').classList.add('pop');
+    drawPinHint(`${r.city}, ${r.state}`, 'ok');
+  }catch{
+    if(seq !== pinSeq) return;
+    drawPinHint(navigator.onLine ? 'Couldn\'t look up the PIN right now — type your city instead.' : 'You\'re offline — type your city, or try again when you\'re online.', 'warn');
+    pinState = { pin, state:'' };
+  }
 }
 function saveProfile(){
   clearForm('profileSheet');
   const name = $('#pfNameIn').value.trim(), incRaw = $('#pfIncomeIn').value.trim(), inc = incRaw ? num(incRaw) : null;
+  const company = $('#pfCompany').value.trim(), dob = $('#pfDob').value, pin = $('#pfPin').value.trim(), city = $('#pfCity').value.trim();
   let bad = setInvalid('pfNameG', !name);
+  bad += setInvalid('pfDobG', !!dob && (diffDays(T, dob) >= 0 || ageFrom(dob) == null));
+  bad += setInvalid('pfPinG', !!pin && !PIN_RE.test(pin), 'pfPinErr', 'Enter a 6-digit PIN code.');
   bad += setInvalid('pfIncomeG', inc != null && !(inc >= 0 && inc <= 1e8));
-  if(bad) return;
+  if(bad){ showAlert('pfAlert', `Please fix ${bad} highlighted field${bad > 1 ? 's' : ''}.`); scrollToError('profileSheet'); return; }
   closeSheet('profileSheet');
-  commit(() => Object.assign(st().settings, { name, income: inc }), { type:'success', title:'Profile saved' });
+  const state = pin && pin === pinState.pin ? pinState.state : (pin === st().settings.pin ? st().settings.state : '');
+  commit(() => Object.assign(st().settings, { name, income: inc, company, dob, pin, city, state }), { type:'success', title:'Profile saved' });
+}
+
+/* ---------- profile icon: 3D icon, photo or initial ---------- */
+function openAvatarSheet(){
+  const a = st().settings.avatar;
+  $('#avGrid').innerHTML = AVATARS.map((e, i) => `<button type="button" class="av-btn ${a?.type === 'emoji' && a.v === e ? 'sel' : ''}" data-av="${e}" style="--i:${i}" aria-label="Use ${e}">${e3d(e)}</button>`).join('');
+  $('#avLetter').innerHTML = `<span class="av-letter">${esc(displayName().charAt(0).toUpperCase())}</span>Use initial`;
+  openSheet('avatarSheet');
+}
+function setAvatar(avatar, title){
+  closeSheet('avatarSheet');
+  commit(() => { st().settings.avatar = avatar; }, { type:'success', title });
+  const f = $('#pfAvatar'); f.classList.remove('bump'); void f.offsetWidth; f.classList.add('bump');
+}
+/** Square-crops and shrinks a photo to a small JPEG so it can sync with your settings. */
+function photoToDataUrl(file){
+  return new Promise((res, rej) => {
+    if(!/^image\//.test(file.type)) return rej(new Error('type'));
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const side = Math.min(img.naturalWidth, img.naturalHeight), S = 192, c = document.createElement('canvas');
+      c.width = c.height = S;
+      c.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, S, S);
+      URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', .82));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('decode')); };
+    img.src = url;
+  });
+}
+async function onAvatarPicked(file){
+  try{ setAvatar({ type:'photo', v: await photoToDataUrl(file) }, 'Profile photo updated'); }
+  catch{ toast({ type:'error', title:'Couldn\'t use that picture', body:'Pick a JPG or PNG photo.' }); }
 }
 
 /* ================================================================
@@ -1030,14 +1127,14 @@ function openAlerts(){
   const a = computeAlerts();
   $('#notifSub').textContent = !st().settings.alertsOn ? 'Reminders are turned off' : a.length ? `${a.length} due soon — tap one to open it` : 'Nothing due soon';
   $('#notifList').innerHTML = !st().settings.alertsOn
-    ? `<div class="empty"><div class="em">🔕</div><b>Reminders are off</b>Turn them on to get notified before due dates.<div class="empty-actions"><button class="btn btn-primary btn-sm" id="turnOnAlerts">Turn on reminders</button></div></div>`
+    ? `<div class="empty"><div class="em">${e3d('🔕')}</div><b>Reminders are off</b>Turn them on to get notified before due dates.<div class="empty-actions"><button class="btn btn-primary btn-sm" id="turnOnAlerts">Turn on reminders</button></div></div>`
     : a.length ? a.map(({ it, due, d }, i) => { const c = cat(it.catId);
         const when = d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : `In ${d} days`;
         const what = it.kind === 'chit' ? `Round ${it.roundsDone + 1} · ${fmtMoney(it.installment)}` : fmtMoney(it.amount);
         return `<button class="notif-item" data-goto="${it.id}" style="--i:${i}"><span class="notif-ic glyph" style="--accent:${catColor(c)}">${glyphHTML(c)}</span>
           <span style="min-width:0"><span class="notif-t">${esc(it.name)}</span><span class="notif-s">${what} · ${fmtDate(due)}</span></span>
           <span class="notif-when badge ${d <= 1 ? 'due' : 'soon'}">${when}</span></button>`; }).join('')
-    : `<div class="empty"><div class="em">✅</div><b>You're all caught up</b>Nothing is inside its reminder window right now.</div>`;
+    : `<div class="empty"><div class="em">${e3d('✅')}</div><b>You're all caught up</b>Nothing is inside its reminder window right now.</div>`;
   seenSig = alertSig; renderBell();
   openSheet('notifSheet');
 }
@@ -1069,18 +1166,25 @@ async function maybeAskNotify(){
 const banks = () => st().settings.banks || [];
 const bankById = id => banks().find(b => b.id === id);
 const bankLabel = b => `${shortName(b.name)} ${maskAcct(b.acct)}`;
-function bankInitials(b){
-  const s = shortName(b.name).replace(/[^A-Za-z0-9& ]/g, '');
-  const words = s.split(/\s+/).filter(Boolean);
-  if(s.length <= 5) return s;
-  return words.length > 1 ? words.slice(0, 3).map(w => w[0]).join('').toUpperCase() : s.slice(0, 3).toUpperCase();
-}
-const bankIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 10h18L12 4 3 10ZM5 10v8M19 10v8M9.5 10v8M14.5 10v8M3 20h18"/></svg>';
+const branchText = b => b.branch ? `${b.branch}${b.branchCity && b.branchCity !== b.branch ? ', ' + b.branchCity : ''}` : '';
 function renderBanks(){
-  $('#bankList').innerHTML = banks().length ? banks().map((b, i) => `<button class="bank-row" data-bank="${b.id}" style="animation-delay:${i * 40}ms"><span class="bank-badge">${esc(bankInitials(b))}</span>
-      <span style="min-width:0;flex:1"><span class="bank-name">${esc(b.name)}</span><span class="bank-sub">${maskAcct(b.acct)} · ${esc(b.ifsc)}${b.holder ? ' · ' + esc(b.holder) : ''}</span></span>
+  $('#bankList').innerHTML = banks().length ? banks().map((b, i) => `<button class="bank-row" data-bank="${b.id}" style="animation-delay:${i * 40}ms">${bankBadgeHTML(b.name)}
+      <span style="min-width:0;flex:1"><span class="bank-name">${esc(b.name)}</span><span class="bank-sub">${maskAcct(b.acct)} · ${esc(b.ifsc)}</span>${b.branch ? `<span class="bank-branch">${e3d('📍')}${esc(branchText(b))}</span>` : ''}</span>
       <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg></button>`).join('')
-    : `<div class="empty" style="padding:20px">No bank accounts yet.<div class="empty-actions"><button class="btn btn-secondary btn-sm" data-add-bank>Add bank account</button></div></div>`;
+    : `<div class="empty" style="padding:20px"><div class="em">${e3d('🏦')}</div>No bank accounts yet.<div class="empty-actions"><button class="btn btn-secondary btn-sm" data-add-bank>Add bank account</button></div></div>`;
+  backfillBranches();
+}
+/** Accounts saved while offline get their branch filled in once we're back online. */
+const branchTried = new Set();
+async function backfillBranches(){
+  if(!navigator.onLine) return;
+  for(const b of banks().filter(x => !x.branch && !branchTried.has(x.ifsc))){
+    branchTried.add(b.ifsc);
+    try{
+      const r = await lookupIfsc(b.ifsc); if(!r || !r.branch) continue;
+      commit(() => { const x = banks().find(y => y.id === b.id); if(x && !x.branch) Object.assign(x, { branch:r.branch, branchCity:r.city || r.district }); });
+    }catch{ branchTried.delete(b.ifsc); return; }
+  }
 }
 function fillBankSelect(selected){
   $('#bBank').innerHTML = `<option value="">Not set</option>` + banks().map(b => `<option value="${b.id}">${esc(bankLabel(b))}</option>`).join('') + `<option value="__add">+ Add bank account</option>`;
@@ -1102,6 +1206,9 @@ function openBankSheet(b, after){
   $('#bkAcct').value = b?.acct || '';
   $('#bkIfsc').value = b?.ifsc || '';
   $('#bkIfscHint').textContent = 'Printed on your cheque book or passbook.';
+  ifscFound = b?.branch ? { ifsc:b.ifsc, branch:b.branch, city:b.branchCity || '' } : null;
+  drawBranch(ifscFound ? 'ok' : '');
+  drawBankBadge();
   $('#bkDelete').classList.toggle('hidden', !b);
   openSheet('bankSheet');
 }
@@ -1111,7 +1218,40 @@ function onBankPicked(){
   const known = findBank(v), ifsc = $('#bkIfsc');
   if(known && (!ifsc.value || bankFromIfsc(ifsc.value)?.[0] !== v) && ifsc.value.length < 5) ifsc.value = known[2];
   if(v === OTHER_BANK) setTimeout(() => $('#bkOther').focus(), 150);
-  ifscHint();
+  ifscHint(); drawBankBadge();
+}
+function drawBankBadge(){
+  const v = $('#bkBank').value, name = v === OTHER_BANK ? $('#bkOther').value.trim() : v, trig = $('#bkBank')._dd?.btn;
+  if(!trig) return;
+  trig.querySelector('.bank-badge')?.remove();
+  if(name) trig.insertAdjacentHTML('afterbegin', bankBadgeHTML(name, 'sm'));
+}
+let ifscFound = null, ifscSeq = 0;
+function drawBranch(kind, msg){
+  const el = $('#bkBranch');
+  if(!kind){ el.classList.add('hidden'); el.innerHTML = ''; return; }
+  el.className = 'lookup-card ' + kind;
+  if(kind === 'busy') el.innerHTML = `<span class="spinner dim"></span><span>Looking up the branch…</span>`;
+  else if(kind === 'ok') el.innerHTML = `${e3d('📍', 'lk-ic')}<span><b>${esc(ifscFound.branch)}</b>${ifscFound.city ? `<small>${esc(ifscFound.city)}${ifscFound.state ? ', ' + esc(ifscFound.state) : ''}</small>` : ''}</span>`;
+  else el.innerHTML = `<span>${esc(msg)}</span>`;
+}
+async function findBranch(ifsc){
+  if(ifscFound?.ifsc === ifsc) return drawBranch('ok');
+  const seq = ++ifscSeq;
+  drawBranch('busy');
+  try{
+    const r = await lookupIfsc(ifsc);
+    if(seq !== ifscSeq) return;
+    if(!r){ ifscFound = null; return drawBranch('warn', 'No branch found for this IFSC — please double-check it.'); }
+    ifscFound = { ifsc, branch:r.branch, city:r.city || r.district, state:r.state };
+    const guess = findBank(r.bank) ? r.bank : bankFromIfsc(ifsc)?.[0];
+    if(guess && !$('#bkBank').value){ setSelect('bkBank', guess); $('#bkOtherG').classList.add('hidden'); drawBankBadge(); }
+    drawBranch('ok'); ifscHint();
+  }catch{
+    if(seq !== ifscSeq) return;
+    ifscFound = null;
+    drawBranch('warn', navigator.onLine ? 'Couldn\'t look up the branch right now. You can still save — we\'ll fill it in later.' : 'You\'re offline. You can still save — the branch is filled in when you\'re back online.');
+  }
 }
 function ifscHint(){
   const v = $('#bkIfsc').value, guess = bankFromIfsc(v), chosen = $('#bkBank').value;
@@ -1121,8 +1261,10 @@ function onIfscInput(){
   const el = $('#bkIfsc'), clean = el.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11);
   if(el.value !== clean) el.value = clean;
   const guess = bankFromIfsc(clean);
-  if(guess && !$('#bkBank').value){ setSelect('bkBank', guess[0]); $('#bkOtherG').classList.add('hidden'); }
+  if(guess && !$('#bkBank').value){ setSelect('bkBank', guess[0]); $('#bkOtherG').classList.add('hidden'); drawBankBadge(); }
   ifscHint();
+  if(IFSC_RE.test(clean)) findBranch(clean);
+  else { ifscSeq++; if(ifscFound?.ifsc !== clean) ifscFound = null; drawBranch(''); }
 }
 function saveBank(){
   clearForm('bankSheet');
@@ -1138,7 +1280,8 @@ function saveBank(){
   closeSheet('bankSheet');
   commit(() => {
     const list = st().settings.banks = [...banks()];
-    const rec = { id, name, acct, ifsc, holder };
+    const old = list.find(b => b.id === id), found = ifscFound?.ifsc === ifsc ? ifscFound : null;
+    const rec = { id, name, acct, ifsc, holder, branch: found?.branch || (old?.ifsc === ifsc ? old.branch : '') || '', branchCity: found?.city || (old?.ifsc === ifsc ? old.branchCity : '') || '' };
     const i = list.findIndex(b => b.id === id);
     if(i > -1) list[i] = rec; else list.push(rec);
   }, { type:'success', title: editingBank ? 'Bank account updated' : 'Bank account added', body:`${shortName(name)} ${maskAcct(acct)}` });
@@ -1205,18 +1348,20 @@ function onUpdateClick(e){
   toast({ type:'success', title:'We\'ll remind you tomorrow', body:'You can update any time from Profile → About.', ms:3500 });
 }
 
-/* ---------- collapsible profile sections ---------- */
+/* ---------- collapsible profile sections: closed by default, only opened ones are remembered ---------- */
+const ACC_KEY = 'finly-acc-open';
 function initAccordions(){
-  let closed = [];
-  try{ closed = JSON.parse(localStorage.getItem('finly-acc') || '[]'); }catch{ closed = []; }
+  let open = [];
+  try{ open = JSON.parse(localStorage.getItem(ACC_KEY) || '[]'); localStorage.removeItem('finly-acc'); }catch{ open = []; }
   $$('.acc').forEach(a => {
-    const t = $('.acc-toggle', a), set = shut => { a.classList.toggle('closed', shut); t.setAttribute('aria-expanded', String(!shut)); };
-    set(closed.includes(a.dataset.acc));
-    t.addEventListener('click', () => {
-      const shut = !a.classList.contains('closed'); set(shut);
-      closed = shut ? [...new Set([...closed, a.dataset.acc])] : closed.filter(k => k !== a.dataset.acc);
-      try{ localStorage.setItem('finly-acc', JSON.stringify(closed)); }catch{ /* private mode */ }
-      if(!shut) requestAnimationFrame(moveAllThumbs);
+    const t = $('.acc-toggle', a), set = isOpen => { a.classList.toggle('closed', !isOpen); t.setAttribute('aria-expanded', String(isOpen)); };
+    set(open.includes(a.dataset.acc));
+    $('.acc-head', a).addEventListener('click', e => {
+      if(e.target.closest('.info-i, .section-link')) return;
+      const isOpen = a.classList.contains('closed'); set(isOpen);
+      open = isOpen ? [...new Set([...open, a.dataset.acc])] : open.filter(k => k !== a.dataset.acc);
+      try{ localStorage.setItem(ACC_KEY, JSON.stringify(open)); }catch{ /* private mode */ }
+      if(isOpen) requestAnimationFrame(moveAllThumbs);
     });
   });
 }
@@ -1251,6 +1396,13 @@ function wire(){
   $('#incomeBars').addEventListener('click', e => { if(e.target.closest('[data-income]')) openProfileSheet(true); });
   $('#profileCard').addEventListener('click', () => openProfileSheet(false));
   $('#pfSave').addEventListener('click', saveProfile);
+  $('#pfDob').addEventListener('input', drawAge);
+  $('#pfPin').addEventListener('input', onPinInput);
+  $('#pfAvatar').addEventListener('click', openAvatarSheet);
+  $('#avGrid').addEventListener('click', e => { const b = e.target.closest('[data-av]'); if(b) setAvatar({ type:'emoji', v:b.dataset.av }, 'Profile icon updated'); });
+  $('#avLetter').addEventListener('click', () => setAvatar(null, 'Showing your initial'));
+  $('#avPhoto').addEventListener('click', () => { const p = $('#avatarPicker'); p.value = ''; p.click(); });
+  $('#avatarPicker').addEventListener('change', e => { const f = e.target.files?.[0]; if(f) onAvatarPicked(f); });
   bindSeg($('#byToggle'), b => { byView = b.dataset.v; renderStats(); flushBars(); });
   bindSeg($('#chartToggle'), b => {
     const circle = b.dataset.view === 'circle';
@@ -1287,7 +1439,7 @@ function wire(){
   $('#adSave').addEventListener('click', saveAuctionDate);
   $('#adReset').addEventListener('click', resetAuctionDate);
 
-  $('#emojiGrid').innerHTML = EMOJIS.map(e => `<button type="button" class="emoji-btn" data-e="${e}" aria-label="Icon ${e}">${e}</button>`).join('');
+  $('#emojiGrid').innerHTML = EMOJIS.map(e => `<button type="button" class="emoji-btn" data-e="${e}" aria-label="Icon ${e}">${e3d(e)}</button>`).join('');
   $('#emojiGrid').addEventListener('click', e => { const b = e.target.closest('.emoji-btn'); if(!b) return; pickedEmoji = pickedEmoji === b.dataset.e ? '' : b.dataset.e; drawCatPreview(true); });
   $('#catName').addEventListener('input', () => drawCatPreview(false));
   $('#newCatBtn').addEventListener('click', () => openCatSheet(null));
@@ -1331,6 +1483,7 @@ function wire(){
   $('#newBankBtn').addEventListener('click', () => openBankSheet(null));
   $('#bankList').addEventListener('click', e => { if(e.target.closest('[data-add-bank]')) return openBankSheet(null); const r = e.target.closest('[data-bank]'); if(r) openBankSheet(bankById(r.dataset.bank)); });
   $('#bkBank').addEventListener('change', onBankPicked);
+  $('#bkOther').addEventListener('input', drawBankBadge);
   $('#bkIfsc').addEventListener('input', onIfscInput);
   $('#bkAcct').addEventListener('input', e => { const c = e.target.value.replace(/\D/g, '').slice(0, 18); if(c !== e.target.value) e.target.value = c; });
   $('#bkSave').addEventListener('click', saveBank);

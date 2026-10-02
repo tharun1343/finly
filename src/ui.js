@@ -40,7 +40,7 @@ export function openSheet(id){
   requestAnimationFrame(() => footShadow(o));
 }
 export function closeSheet(id){
-  closeDropdown();
+  closeDropdown(); hideInfo();
   id = id || openStack[openStack.length - 1]; if(!id) return;
   const o = $('#' + id); o.classList.remove('show'); $('.sheet', o).style.transform = '';
   const i = openStack.lastIndexOf(id); if(i > -1) openStack.splice(i, 1);
@@ -72,6 +72,7 @@ export function initSheets(){
 }
 /** For the Android back button: returns true if something was closed. */
 export function handleBackInOverlays(){
+  if(hideInfo()) return true;
   if(ddOpen){ closeDropdown(); return true; }
   if(openStack.length){ closeSheet(); return true; }
   return false;
@@ -82,6 +83,38 @@ export function confirmBox({ title, body, yes = 'Delete', danger = true, onYes }
   $('#cfTitle').textContent = title; $('#cfBody').textContent = body;
   const y = $('#cfYes'); y.textContent = yes; y.className = 'btn btn-grow ' + (danger ? 'btn-danger' : 'btn-primary');
   confirmCb = onYes; openSheet('confirmSheet');
+}
+
+/* ---------------- "i" buttons: tap to see the extra detail ---------------- */
+let infoBtn = null;
+export function hideInfo(){
+  if(!infoBtn) return false;
+  $('#infoPop').classList.remove('show'); infoBtn.classList.remove('on'); infoBtn.setAttribute('aria-expanded', 'false'); infoBtn = null;
+  return true;
+}
+function showInfo(b){
+  const pop = $('#infoPop');
+  hideInfo(); infoBtn = b; b.classList.add('on'); b.setAttribute('aria-expanded', 'true');
+  pop.textContent = b.dataset.info;
+  pop.classList.remove('below'); pop.style.left = '0px'; pop.style.top = '0px';
+  const r = b.getBoundingClientRect(), w = Math.min(300, innerWidth - 24); pop.style.width = w + 'px';
+  const h = pop.offsetHeight, below = r.top < h + 16;
+  const left = Math.min(Math.max(12, r.left + r.width / 2 - w / 2), innerWidth - w - 12);
+  pop.style.left = left + 'px';
+  pop.style.top = (below ? r.bottom + 10 : r.top - h - 10) + 'px';
+  pop.style.setProperty('--ax', (r.left + r.width / 2 - left) + 'px');
+  pop.classList.toggle('below', below);
+  requestAnimationFrame(() => pop.classList.add('show'));
+}
+export function initInfo(){
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-info]');
+    if(!b){ if(!e.target.closest('#infoPop')) hideInfo(); return; }
+    e.preventDefault(); e.stopPropagation();
+    if(infoBtn === b) hideInfo(); else showInfo(b);
+  }, true);
+  addEventListener('scroll', () => hideInfo(), { capture:true, passive:true });
+  addEventListener('resize', () => hideInfo());
 }
 
 /* ---------------- forms ---------------- */

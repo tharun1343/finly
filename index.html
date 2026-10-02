@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com https://ifsc.razorpay.com https://api.postalpincode.in; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
 <meta name="theme-color" content="#0A0F1D">
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
@@ -13,6 +13,7 @@
 
 <div class="boot" id="boot"><div class="brand-mark"><img src="./favicon.svg" alt="Finly"></div></div>
 <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+<div class="info-pop" id="infoPop" role="tooltip"></div>
 <div class="force-update hidden" id="forceUpdate" role="alertdialog" aria-labelledby="fuTitle">
   <div class="fu-card">
     <div class="brand-mark fu-mark"><img src="./favicon.svg" alt=""></div>
@@ -35,9 +36,9 @@
       <p class="auth-sub" style="margin:0">Know what's due, what's saved and when you'll be debt-free.</p>
     </div>
     <ul class="feature-list">
-      <li style="--i:0"><span class="f-ic">⏰</span><span><b>Reminders before every due date</b>Right on your phone, even offline.</span></li>
-      <li style="--i:1"><span class="f-ic">🤝</span><span><b>Chit funds done right</b>Commission, auctions, savings vs debt.</span></li>
-      <li style="--i:2"><span class="f-ic">☁️</span><span><b>Works offline, syncs later</b>Your data is backed up to your account.</span></li>
+      <li style="--i:0"><span class="f-ic"><img class="e3d" src="./e3d/23f0.webp" alt="" draggable="false"></span><span><b>Reminders before every due date</b>Right on your phone, even offline.</span></li>
+      <li style="--i:1"><span class="f-ic"><img class="e3d" src="./e3d/1f91d.webp" alt="" draggable="false"></span><span><b>Chit funds done right</b>Commission, auctions, savings vs debt.</span></li>
+      <li style="--i:2"><span class="f-ic"><img class="e3d" src="./e3d/2601.webp" alt="" draggable="false"></span><span><b>Works offline, syncs later</b>Your data is backed up to your account.</span></li>
     </ul>
     <div class="btn-stack">
       <button class="btn btn-primary btn-block" data-auth="signup">Create account</button>
@@ -106,10 +107,9 @@
       <div class="input-wrap"><svg class="lead-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4.5 5-6 8-6s6.5 1.5 8 6"/></svg>
       <input id="obName" autocomplete="name" maxlength="40" placeholder="Your name"></div>
       <div class="ferr">Tell us what to call you.</div></div>
-    <div class="fgroup" id="obIncomeG"><label for="obIncome">Monthly income (optional)</label>
+    <div class="fgroup" id="obIncomeG"><label for="obIncome">Monthly income (optional) <button type="button" class="info-i" data-info="Used to show how much is left after your commitments. Stays private to you." aria-label="More info">i</button></label>
       <div class="money-wrap"><input id="obIncome" type="text" inputmode="decimal" data-money placeholder="e.g. 50,000" autocomplete="off"></div>
-      <div class="fhint">Used to show how much is left after your commitments. Stays private to you.</div>
-      <div class="ferr">Enter an amount up to ₹10,00,00,000.</div></div>
+            <div class="ferr">Enter an amount up to ₹10,00,00,000.</div></div>
     <span class="flabel">Pick your colours</span>
     <div class="swatch-grid" id="obSwatches" style="margin-bottom:18px"></div>
     <div class="switch-row" id="obNotifyRow"><div><div class="sr-label">Remind me before due dates</div><div class="sr-sub">Phone notifications at 9 AM — works offline</div></div><span class="switch on" id="obNotify" role="switch" aria-checked="true"></span></div>
@@ -159,10 +159,10 @@
   <!-- STATS -->
   <section class="screen" id="screen-stats">
     <div class="section-head" style="margin-top:4px"><div class="section-title">Insights</div>
-      <button class="btn-chip" data-export-all><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export</button></div>
+      <button class="btn-chip export" data-export-all><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export</button></div>
     <div class="card">
       <div class="card-top">
-        <div><div class="card-title">Monthly outflow</div><div class="card-sub">By category, active items</div></div>
+        <div class="card-title">Monthly outflow <button type="button" class="info-i" data-info="What you pay each month, split by category. Only active items count; quarterly, half-yearly and yearly payments are spread per month." aria-label="More info">i</button></div>
         <div class="segmented compact" id="chartToggle"><div class="seg-thumb"></div><button class="seg-btn sel" data-view="bar">Bar</button><button class="seg-btn" data-view="circle">Circle</button></div>
       </div>
       <div id="outflowBar"></div>
@@ -170,7 +170,7 @@
     </div>
     <div class="card">
       <div class="card-top">
-        <div><div class="card-title">By commitment</div><div class="card-sub">Paid so far vs what's left</div></div>
+        <div class="card-title">By commitment <button type="button" class="info-i" data-info="Paid so far vs what's left for each EMI and chit. Tap the download button on a row to export just that one." aria-label="More info">i</button></div>
         <div class="segmented compact" id="byToggle"><div class="seg-thumb"></div><button class="seg-btn sel" data-v="active">Active</button><button class="seg-btn" data-v="closed">Closed</button></div>
       </div>
       <div id="byList"></div>
@@ -188,14 +188,12 @@
 
   <!-- WALLET -->
   <section class="screen" id="screen-wallet">
-    <div class="section-head" style="margin-top:4px"><div class="section-title">Chits &amp; savings</div>
-      <button class="btn-chip" data-export-all><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export</button></div>
+    <div class="section-head" style="margin-top:4px"><div class="section-title">Chits &amp; savings <button type="button" class="info-i" id="howBtn" aria-label="How chit funds work">i</button></div>
+      <button class="btn-chip export" data-export-all><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export</button></div>
     <div class="wallet-hero">
-      <div class="wh-card save"><div class="label-caps">Savings</div><div class="wh-value" id="whSave">₹0</div><div class="wh-foot" id="whSaveFoot">—</div></div>
-      <div class="wh-card debt"><div class="label-caps">Chit debt</div><div class="wh-value" id="whDebt">₹0</div><div class="wh-foot" id="whDebtFoot">—</div></div>
+      <div class="wh-card save"><img class="e3d wh-ic" src="./e3d/1f4b0.webp" alt="" draggable="false"><div class="label-caps">Savings</div><div class="wh-value" id="whSave">₹0</div><div class="wh-foot" id="whSaveFoot">—</div></div>
+      <div class="wh-card debt"><img class="e3d wh-ic" src="./e3d/1f4b8.webp" alt="" draggable="false"><div class="label-caps">Chit debt</div><div class="wh-value" id="whDebt">₹0</div><div class="wh-foot" id="whDebtFoot">—</div></div>
     </div>
-    <button class="info-strip" id="howBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-      <div class="info-strip-text"><b>Not taken = savings. Taken = debt.</b> Tap to see how the auction and commission work.</div></button>
     <div id="chitList"></div>
     <div class="section-head" id="closedHead"><div class="section-title">Closed <small id="closedCount"></small></div></div>
     <div class="closed-list" id="closedList"></div>
@@ -203,44 +201,45 @@
 
   <!-- PROFILE -->
   <section class="screen" id="screen-profile">
-    <button class="profile-card" id="profileCard"><div class="profile-avatar" id="pfAvatar">?</div><div style="min-width:0"><div class="profile-name" id="pfName"></div><div class="profile-email" id="pfEmail"></div></div>
-      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg></button>
+    <div class="profile-card">
+      <button class="profile-avatar" id="pfAvatar" aria-label="Change profile icon"><span class="pa-face" id="pfAvatarFace">?</span><span class="pa-cam"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg></span></button>
+      <button class="pf-main" id="profileCard"><span style="min-width:0;flex:1"><span class="profile-name" id="pfName"></span><span class="profile-email" id="pfEmail"></span><span class="pf-tags" id="pfTags"></span></span>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg></button>
+    </div>
 
     <div class="acc" data-acc="cats">
-      <div class="acc-head"><button class="acc-toggle" aria-expanded="true"><span class="section-title">Categories</span><svg class="acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></button>
-        <button class="section-link" id="newCatBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>New</button></div>
+      <div class="acc-head"><button class="acc-toggle" aria-expanded="false"><span class="acc-ic"><img class="e3d" src="./e3d/1f5c2.webp" alt="" draggable="false"></span><span class="section-title">Categories</span></button> <button type="button" class="info-i" data-info="Tap a category to change its icon, name or default reminders." aria-label="More info">i</button>
+        <button class="section-link" id="newCatBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>New</button><svg class="acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></div>
       <div class="acc-body"><div class="acc-inner">
-        <p class="section-hint">Tap a category to change its icon, name, or default reminders.</p>
         <div class="cat-grid" id="catGrid"></div>
       </div></div>
     </div>
 
     <div class="acc" data-acc="banks">
-      <div class="acc-head"><button class="acc-toggle" aria-expanded="true"><span class="section-title">Bank accounts</span><svg class="acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></button>
-        <button class="section-link" id="newBankBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>Add</button></div>
+      <div class="acc-head"><button class="acc-toggle" aria-expanded="false"><span class="acc-ic"><img class="e3d" src="./e3d/1f3e6.webp" alt="" draggable="false"></span><span class="section-title">Bank accounts</span></button> <button type="button" class="info-i" data-info="Used to show which account each EMI&#39;s e-mandate debits from. The branch is looked up from the IFSC." aria-label="More info">i</button>
+        <button class="section-link" id="newBankBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>Add</button><svg class="acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></div>
       <div class="acc-body"><div class="acc-inner">
-        <p class="section-hint">Used to show which account each EMI's e-mandate debits from.</p>
         <div class="bank-list" id="bankList"></div>
       </div></div>
     </div>
 
     <div class="acc" data-acc="look">
-      <div class="acc-head"><button class="acc-toggle" aria-expanded="true"><span class="section-title">Appearance</span><svg class="acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></button></div>
+      <div class="acc-head"><button class="acc-toggle" aria-expanded="false"><span class="acc-ic"><img class="e3d" src="./e3d/1f3a8.webp" alt="" draggable="false"></span><span class="section-title">Appearance</span></button><svg class="acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></div>
       <div class="acc-body"><div class="acc-inner">
         <div class="card list">
           <div class="setting-block">
-            <div class="setting-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2a10 10 0 0 0 0 20c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16a6 6 0 0 0 6-6c0-4.9-4.5-8.6-10-8.6z"/></svg><div><div class="setting-label">Colours</div></div></div>
+            <div class="setting-left"><img class="e3d set-ic" src="./e3d/1f3a8.webp" alt="" draggable="false"><div><div class="setting-label">Colours</div></div></div>
             <div class="swatch-grid" id="palGrid"></div>
           </div>
           <div class="setting-block">
-            <div class="setting-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg><div><div class="setting-label">Text size</div></div></div>
+            <div class="setting-left"><img class="e3d set-ic" src="./e3d/1f524.webp" alt="" draggable="false"><div><div class="setting-label">Text size</div></div></div>
             <div class="segmented" id="textSizeSeg"><div class="seg-thumb"></div>
               <button class="seg-btn" data-size="sm" style="font-size:13px">A Small</button>
               <button class="seg-btn sel" data-size="md" style="font-size:15px">A Medium</button>
               <button class="seg-btn" data-size="lg" style="font-size:17px">A Large</button></div>
           </div>
           <button class="setting-row" id="themeRow">
-            <div class="setting-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><div><div class="setting-label">Dark mode</div></div></div>
+            <div class="setting-left"><img class="e3d set-ic" src="./e3d/1f319.webp" alt="" draggable="false"><div><div class="setting-label">Dark mode</div></div></div>
             <span class="switch on" id="themeSwitch" role="switch" aria-checked="true"></span>
           </button>
         </div>
@@ -248,26 +247,23 @@
     </div>
 
     <div class="acc" data-acc="remind">
-      <div class="acc-head"><button class="acc-toggle" aria-expanded="true"><span class="section-title">Reminders</span><svg class="acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></button></div>
+      <div class="acc-head"><button class="acc-toggle" aria-expanded="false"><span class="acc-ic"><img class="e3d" src="./e3d/1f514.webp" alt="" draggable="false"></span><span class="section-title">Reminders</span></button> <button type="button" class="info-i" data-info="Set when to remind per category above, or per entry when you add it. Default: 1 day before. Reminders never come after the due date." aria-label="More info">i</button><svg class="acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></div>
       <div class="acc-body"><div class="acc-inner">
         <div class="card list">
           <button class="setting-row" id="alertsRow">
-            <div class="setting-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><div><div class="setting-label">Due-date reminders</div><div class="setting-sub" id="alertsSub">Phone notification at 9 AM, before the due date only</div></div></div>
+            <div class="setting-left"><img class="e3d set-ic" src="./e3d/23f0.webp" alt="" draggable="false"><div><div class="setting-label">Due-date reminders</div><div class="setting-sub" id="alertsSub">Phone notification at 9 AM</div></div></div>
             <span class="switch on" id="alertsSwitch" role="switch" aria-checked="true"></span>
           </button>
-          <div class="setting-row static">
-            <div class="setting-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><div><div class="setting-label">When to remind</div><div class="setting-sub">Set per category above, or per entry when you add it. Default: 1 day before.</div></div></div>
-          </div>
         </div>
       </div></div>
     </div>
 
     <div class="acc" data-acc="sync">
-      <div class="acc-head"><button class="acc-toggle" aria-expanded="true"><span class="section-title">Data &amp; sync</span><svg class="acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></button></div>
+      <div class="acc-head"><button class="acc-toggle" aria-expanded="false"><span class="acc-ic"><img class="e3d" src="./e3d/2601.webp" alt="" draggable="false"></span><span class="section-title">Data &amp; sync</span></button> <button type="button" class="info-i" data-info="Everything is saved on this phone first and backed up to your account whenever you&#39;re online. Green dot = synced, orange = syncing, red = offline." aria-label="More info">i</button><svg class="acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></div>
       <div class="acc-body"><div class="acc-inner">
         <div class="card list">
           <div class="setting-row static">
-            <div class="setting-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 0 0 4 12.5 3.5 3.5 0 0 0 6.5 19z"/></svg><div><div class="setting-label" id="syncLabel">Synced</div><div class="setting-sub" id="syncSub">—</div></div></div>
+            <div class="setting-left"><img class="e3d set-ic" src="./e3d/2601.webp" alt="" draggable="false"><div><div class="setting-label" id="syncLabel">Synced</div><div class="setting-sub" id="syncSub">—</div></div></div>
             <button class="btn btn-secondary btn-sm" id="syncNowBtn">Sync now</button>
           </div>
         </div>
@@ -275,20 +271,20 @@
     </div>
 
     <div class="acc" data-acc="about">
-      <div class="acc-head"><button class="acc-toggle" aria-expanded="true"><span class="section-title">About</span><svg class="acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></button></div>
+      <div class="acc-head"><button class="acc-toggle" aria-expanded="false"><span class="acc-ic"><img class="e3d" src="./e3d/2139.webp" alt="" draggable="false"></span><span class="section-title">About</span></button><svg class="acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></div>
       <div class="acc-body"><div class="acc-inner">
         <div id="updateSlot"></div>
         <div class="card list">
           <div class="setting-row static">
-            <div class="setting-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><div><div class="setting-label">Finly</div><div class="setting-sub" id="versionSub">Version</div></div></div>
+            <div class="setting-left"><img class="set-ic brand-ic" src="./favicon.svg" alt=""><div><div class="setting-label">Finly</div><div class="setting-sub" id="versionSub">Version</div></div></div>
             <button class="btn btn-secondary btn-sm" id="checkUpdateBtn">Check for update</button>
           </div>
-          <button class="setting-row" id="logoutRow">
-            <div class="setting-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--rose)"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg><div><div class="setting-label">Log out</div></div></div>
-          </button>
         </div>
+        <p class="credit">3D icons: Fluent Emoji by Microsoft (MIT).</p>
       </div></div>
     </div>
+
+    <button class="logout-btn" id="logoutRow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>Log out</button>
   </section>
 
   <button class="fab" id="fab" aria-label="Add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></button>
@@ -306,8 +302,8 @@
 <div class="sheet-overlay" id="chooserSheet"><div class="sheet">
   <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title">What are you adding?</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
   <div class="sheet-scroll no-foot">
-    <button class="choice big" id="chooseBill" style="margin-bottom:10px"><span class="ch-ic">🏦</span><span><span class="ch-t">EMI or bill</span><br><span class="ch-s">Loans with a fixed tenure, or ongoing bills like broadband and mobile recharges.</span></span></button>
-    <button class="choice big" id="chooseChit"><span class="ch-ic">🤝</span><span><span class="ch-t">Chit fund</span><br><span class="ch-s">Auction-based group — tracked as savings until you take the pot, then as debt.</span></span></button>
+    <button class="choice big" id="chooseBill" style="margin-bottom:10px"><span class="ch-ic"><img class="e3d" src="./e3d/1f3e6.webp" alt="" draggable="false"></span><span><span class="ch-t">EMI or bill</span><br><span class="ch-s">Loans with a fixed tenure, or ongoing bills like broadband and mobile recharges.</span></span></button>
+    <button class="choice big" id="chooseChit"><span class="ch-ic"><img class="e3d" src="./e3d/1f91d.webp" alt="" draggable="false"></span><span><span class="ch-t">Chit fund</span><br><span class="ch-s">Auction-based group — tracked as savings until you take the pot, then as debt.</span></span></button>
   </div>
 </div></div>
 
@@ -328,7 +324,7 @@
     </div>
     <div class="fhint" id="bTenHint" style="margin:-6px 0 14px"></div>
     <div class="fgroup" id="bDueG"><label for="bDue">Next due date *</label><input id="bDue" type="date"><div class="ferr">Pick the next due date.</div><div class="fhint hidden" id="bDuePast" style="color:var(--warn)">This date has passed — the entry will show as Overdue.</div></div>
-    <div class="fgroup"><label for="bBank">Paid from (e-mandate)</label><select id="bBank"></select><div class="fhint">The bank account the EMI is auto-debited from.</div></div>
+    <div class="fgroup"><label for="bBank">Paid from (e-mandate) <button type="button" class="info-i" data-info="The bank account this EMI is auto-debited from. Add accounts in Profile → Bank accounts." aria-label="More info">i</button></label><select id="bBank"></select></div>
     <div class="fgroup"><span class="flabel">Remind me</span><div id="bRem"></div></div>
     <div class="fgroup" style="margin-bottom:0"><span class="flabel">Documents (up to 3 photos or PDFs)</span><div class="att-list" id="bFiles"></div></div>
   </div>
@@ -349,12 +345,12 @@
       <div class="fgroup" id="cMemG"><label for="cMem">No. of people *</label><input id="cMem" type="text" inputmode="numeric" data-int placeholder="10" autocomplete="off"><div class="ferr">2 – 100 people, agent included.</div></div>
     </div>
     <div class="frow">
-      <div class="fgroup" id="cInstG"><label for="cInst">Amount per person *</label><div class="money-wrap"><input id="cInst" type="text" inputmode="decimal" data-money placeholder="Auto" autocomplete="off"></div><div class="ferr">Enter the per-round amount.</div><div class="fhint">Auto-filled as value ÷ people.</div></div>
+      <div class="fgroup" id="cInstG"><label for="cInst">Amount per person * <button type="button" class="info-i" data-info="Auto-filled as chit value ÷ no. of people. Change it if your chit is different." aria-label="More info">i</button></label><div class="money-wrap"><input id="cInst" type="text" inputmode="decimal" data-money placeholder="Auto" autocomplete="off"></div><div class="ferr">Enter the per-round amount.</div></div>
       <div class="fgroup"><label for="cInt">Auction held every *</label><select id="cInt"><option value="1">Every month</option><option value="2">Every 2 months</option><option value="3">Every 3 months</option><option value="4">Every 4 months</option><option value="6">Every 6 months</option><option value="12">Every 12 months</option></select></div>
     </div>
     <div class="frow">
       <div class="fgroup" id="cStartG"><label for="cStart">Start date (round 1) *</label><input id="cStart" type="date"><div class="ferr">Pick the first round's date.</div></div>
-      <div class="fgroup" id="cAgCommG"><label for="cAgComm">Agent's cut / auction</label><div class="money-wrap"><input id="cAgComm" type="text" inputmode="decimal" data-money placeholder="0" autocomplete="off"></div><div class="ferr">Must be less than the chit value.</div><div class="fhint">Kept by the agent from each winning bid.</div></div>
+      <div class="fgroup" id="cAgCommG"><label for="cAgComm">Agent's cut <button type="button" class="info-i" data-info="Kept by the agent from each winning bid before the rest is shared as commission. Leave 0 if none." aria-label="More info">i</button></label><div class="money-wrap"><input id="cAgComm" type="text" inputmode="decimal" data-money placeholder="0" autocomplete="off"></div><div class="ferr">Must be less than the chit value.</div></div>
     </div>
     <div class="switch-row" id="cAgentFirstRow"><div><div class="sr-label">Agent takes round 1</div><div class="sr-sub">No auction in round 1 — everyone pays in full</div></div><span class="switch on" id="cAgentFirst" role="switch" aria-checked="true"></span></div>
     <div class="switch-row" id="cProgRow"><div><div class="sr-label">This chit has already started</div><div class="sr-sub">Enter each auction held so far</div></div><span class="switch" id="cProg" role="switch" aria-checked="false"></span></div>
@@ -400,11 +396,32 @@
 <div class="sheet-overlay" id="profileSheet"><div class="sheet">
   <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title">Your profile</div><div class="sheet-sub" id="pfSheetEmail"></div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
   <div class="sheet-scroll">
+    <div class="form-alert" id="pfAlert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><span></span></div>
     <div class="fgroup" id="pfNameG"><label for="pfNameIn">Name</label><input id="pfNameIn" maxlength="40" autocomplete="name"><div class="ferr">Tell us what to call you.</div></div>
-    <div class="fgroup" id="pfIncomeG" style="margin-bottom:0"><label for="pfIncomeIn">Monthly income</label><div class="money-wrap"><input id="pfIncomeIn" type="text" inputmode="decimal" data-money placeholder="Not set" autocomplete="off"></div><div class="fhint">Leave empty if you'd rather not track it.</div><div class="ferr">Enter an amount up to ₹10,00,00,000.</div></div>
+    <div class="fgroup"><label for="pfCompany">Company</label><div class="input-wrap"><img class="e3d lead-3d" src="./e3d/1f3e2.webp" alt="" draggable="false"><input id="pfCompany" maxlength="60" placeholder="Where you work (optional)" autocomplete="organization"></div></div>
+    <div class="frow">
+      <div class="fgroup" id="pfDobG"><label for="pfDob">Date of birth</label><input id="pfDob" type="date" min="1900-01-01"><div class="ferr">Pick a date in the past.</div></div>
+      <div class="fgroup"><label>Age</label><div class="ro-field" id="pfAge"><img class="e3d" src="./e3d/1f382.webp" alt="" draggable="false"><span>—</span></div></div>
+    </div>
+    <div class="frow">
+      <div class="fgroup" id="pfPinG"><label for="pfPin">PIN code</label><input id="pfPin" type="text" inputmode="numeric" maxlength="6" placeholder="600001" autocomplete="postal-code"><div class="ferr" id="pfPinErr">Enter a 6-digit PIN code.</div></div>
+      <div class="fgroup" id="pfCityG"><label for="pfCity">City <button type="button" class="info-i" data-info="Filled in automatically from your PIN code. You can edit it if it&#39;s not quite right." aria-label="More info">i</button></label><input id="pfCity" maxlength="60" placeholder="Auto from PIN" autocomplete="address-level2"></div>
+    </div>
+    <div class="fhint pin-hint" id="pfPinHint"></div>
+    <div class="fgroup" id="pfIncomeG" style="margin-bottom:0"><label for="pfIncomeIn">Monthly income <button type="button" class="info-i" data-info="Used to show what&#39;s left after your commitments. Leave empty if you&#39;d rather not track it." aria-label="More info">i</button></label><div class="money-wrap"><input id="pfIncomeIn" type="text" inputmode="decimal" data-money placeholder="Not set" autocomplete="off"></div><div class="ferr">Enter an amount up to ₹10,00,00,000.</div></div>
   </div>
   <div class="sheet-foot"><button class="btn btn-primary btn-grow" id="pfSave">Save</button></div>
 </div></div>
+
+<div class="sheet-overlay" id="avatarSheet"><div class="sheet">
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title">Profile icon</div><div class="sheet-sub">Pick an icon or use a photo.</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-scroll no-foot">
+    <div class="av-actions"><button class="btn btn-secondary btn-grow" id="avPhoto"><img class="e3d btn-3d" src="./e3d/1f4f7.webp" alt="" draggable="false">Use photo</button><button class="btn btn-secondary btn-grow" id="avLetter">Use initial</button></div>
+    <span class="flabel">Icons</span>
+    <div class="av-grid" id="avGrid"></div>
+  </div>
+</div></div>
+<input type="file" id="avatarPicker" accept="image/*" class="hidden">
 
 <div class="sheet-overlay" id="exportSheet"><div class="sheet">
   <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="exTitle">Export</div><div class="sheet-sub">Pick what to include, then choose PDF or Excel.</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
@@ -430,14 +447,14 @@
     </div>
     <span class="flabel">Format</span>
     <div class="choice-grid" id="exFormat">
-      <button type="button" class="choice" data-fmt="pdf"><span class="ch-ic">📄</span><span class="ch-t">PDF statement</span><span class="ch-s">Summary + payments, ready to share or print</span></button>
-      <button type="button" class="choice" data-fmt="csv"><span class="ch-ic">📊</span><span class="ch-t">Excel (CSV)</span><span class="ch-s">Opens in Excel or Google Sheets</span></button>
+      <button type="button" class="choice" data-fmt="pdf"><span class="ch-ic"><img class="e3d" src="./e3d/1f4c4.webp" alt="" draggable="false"></span><span class="ch-t">PDF statement</span><span class="ch-s">Summary + payments, ready to share or print</span></button>
+      <button type="button" class="choice" data-fmt="csv"><span class="ch-ic"><img class="e3d" src="./e3d/1f4ca.webp" alt="" draggable="false"></span><span class="ch-t">Excel (CSV)</span><span class="ch-s">Opens in Excel or Google Sheets</span></button>
     </div>
     <div id="exCsvWrap" class="hidden"><span class="flabel">CSV contents</span>
       <div class="segmented" id="exCsvKind" style="margin-bottom:14px"><div class="seg-thumb"></div><button type="button" class="seg-btn sel" data-k="payments">Payment history</button><button type="button" class="seg-btn" data-k="summary">Summary</button></div></div>
     <div class="summary-box" id="exPreview" style="margin-bottom:0"></div>
   </div>
-  <div class="sheet-foot"><button class="btn btn-primary btn-grow" id="exGo">Export</button></div>
+  <div class="sheet-foot"><button class="btn btn-export btn-grow" id="exGo">Export</button></div>
 </div></div>
 
 <div class="sheet-overlay" id="notifSheet"><div class="sheet">
@@ -481,7 +498,7 @@
     <div class="fgroup hidden" id="bkOtherG"><label for="bkOther">Bank name *</label><input id="bkOther" maxlength="60" placeholder="e.g. Madurai District Central Co-op Bank" autocomplete="off"><div class="ferr">Type the bank's name.</div></div>
     <div class="fgroup" id="bkHolderG"><label for="bkHolder">Account holder name</label><input id="bkHolder" maxlength="60" placeholder="Optional" autocomplete="off"></div>
     <div class="fgroup" id="bkAcctG"><label for="bkAcct">Account number *</label><input id="bkAcct" type="text" inputmode="numeric" maxlength="18" placeholder="9 – 18 digits" autocomplete="off"><div class="ferr" id="bkAcctErr">Enter 9 – 18 digits.</div></div>
-    <div class="fgroup" id="bkIfscG" style="margin-bottom:0"><label for="bkIfsc">IFSC *</label><input id="bkIfsc" maxlength="11" placeholder="e.g. SBIN0001234" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase;letter-spacing:1px"><div class="ferr" id="bkIfscErr">IFSC is 11 characters: 4 letters, 0, then 6 letters or digits.</div><div class="fhint" id="bkIfscHint">Printed on your cheque book or passbook.</div></div>
+    <div class="fgroup" id="bkIfscG" style="margin-bottom:0"><label for="bkIfsc">IFSC * <button type="button" class="info-i" data-info="Type the 11-character IFSC — the bank and branch are filled in automatically when you&#39;re online." aria-label="More info">i</button></label><input id="bkIfsc" maxlength="11" placeholder="e.g. SBIN0001234" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase;letter-spacing:1px"><div class="ferr" id="bkIfscErr">IFSC is 11 characters: 4 letters, 0, then 6 letters or digits.</div><div class="fhint" id="bkIfscHint">Printed on your cheque book or passbook.</div><div class="lookup-card hidden" id="bkBranch"></div></div>
   </div>
   <div class="sheet-foot"><button class="btn btn-danger hidden" id="bkDelete">Delete</button><button class="btn btn-primary btn-grow" id="bkSave">Save</button></div>
 </div></div>
