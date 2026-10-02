@@ -157,8 +157,22 @@
   </section>
 
   <!-- STATS -->
+  <!-- LEDGER: money lent and borrowed -->
+  <section class="screen" id="screen-ledger">
+    <div class="section-head" style="margin-top:4px"><div class="section-title">Lend &amp; borrow <button type="button" class="info-i" data-info="Track money you've given to someone or borrowed from someone, with optional interest and tenure. Interest is simple interest on what's still outstanding; payments clear interest first, then the principal." aria-label="More info">i</button></div></div>
+    <div class="wallet-hero">
+      <div class="wh-card save"><img class="e3d wh-ic" src="./e3d/1f4b0.webp" alt="" draggable="false"><div class="label-caps">To receive</div><div class="wh-value" id="lgGet">₹0</div><div class="wh-foot" id="lgGetFoot">—</div></div>
+      <div class="wh-card debt"><img class="e3d wh-ic" src="./e3d/1f4b8.webp" alt="" draggable="false"><div class="label-caps">To pay back</div><div class="wh-value" id="lgOwe">₹0</div><div class="wh-foot" id="lgOweFoot">—</div></div>
+    </div>
+    <div class="segmented" id="lgFilter" style="margin-bottom:14px"><div class="seg-thumb"></div><button class="seg-btn sel" data-f="all">All</button><button class="seg-btn" data-f="lent">I gave</button><button class="seg-btn" data-f="borrowed">I borrowed</button></div>
+    <div class="card-list" id="lgList"></div>
+    <div class="section-head" id="lgClosedHead"><div class="section-title">Settled <small id="lgClosedCount"></small></div></div>
+    <div class="closed-list" id="lgClosedList"></div>
+  </section>
+
   <section class="screen" id="screen-stats">
-    <div class="section-head" style="margin-top:4px"><div class="section-title">Insights</div>
+    <button class="back-btn" id="statsBack" style="margin:0 0 10px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>Profile</button>
+    <div class="section-head" style="margin-top:4px"><div class="section-title">Stats &amp; insights</div>
       <button class="btn-chip export" data-export-all><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export</button></div>
     <div class="card">
       <div class="card-top">
@@ -205,6 +219,13 @@
       <button class="profile-avatar" id="pfAvatar" aria-label="Change profile icon"><span class="pa-face" id="pfAvatarFace">?</span><span class="pa-cam"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg></span></button>
       <button class="pf-main" id="profileCard"><span style="min-width:0;flex:1"><span class="profile-name" id="pfName"></span><span class="profile-email" id="pfEmail"></span><span class="pf-tags" id="pfTags"></span></span>
         <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg></button>
+    </div>
+
+    <div class="card list" style="margin:14px 0 6px">
+      <button class="setting-row" id="openStats">
+        <div class="setting-left"><img class="e3d set-ic" src="./e3d/1f4ca.webp" alt="" draggable="false"><div><div class="setting-label">Stats &amp; insights</div><div class="setting-sub">Monthly outflow, debt vs savings, income</div></div></div>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
     </div>
 
     <div class="acc" data-acc="cats">
@@ -254,8 +275,12 @@
       <div class="acc-body"><div class="acc-inner">
         <div class="card list">
           <button class="setting-row" id="alertsRow">
-            <div class="setting-left"><img class="e3d set-ic" src="./e3d/23f0.webp" alt="" draggable="false"><div><div class="setting-label">Due-date reminders <span class="info-i" role="button" tabindex="0" data-info="Set when to remind per category above, or per entry when you add it. Default: 1 day before. Reminders never come after the due date." aria-label="More info">i</span></div><div class="setting-sub" id="alertsSub">Phone notification at 9 AM</div></div></div>
+            <div class="setting-left"><img class="e3d set-ic" src="./e3d/23f0.webp" alt="" draggable="false"><div><div class="setting-label">Due-date reminders <span class="info-i" role="button" tabindex="0" data-info="Set when to remind per category above, or per entry when you add it. Default: 1 day before at 9 AM. Reminders never come after the due date. If they don't arrive, allow notifications for Finly and set Battery to Unrestricted in Android Settings → Apps → Finly." aria-label="More info">i</span></div><div class="setting-sub" id="alertsSub">Phone notification at 9 AM</div></div></div>
             <span class="switch on" id="alertsSwitch" role="switch" aria-checked="true"></span>
+          </button>
+          <button class="setting-row" id="testNotifRow">
+            <div class="setting-left"><img class="e3d set-ic" src="./e3d/1f514.webp" alt="" draggable="false"><div><div class="setting-label">Send a test notification</div><div class="setting-sub">Check that reminders reach this phone</div></div></div>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg>
           </button>
         </div>
       </div></div>
@@ -293,7 +318,7 @@
   <nav class="bottom-nav" id="bottomNav">
     <span class="nav-ind" id="navInd"></span>
     <button class="nav-item active" data-page="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/></svg><span class="nav-label">Home</span></button>
-    <button class="nav-item" data-page="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 15 4-5 3 3 5-7"/></svg><span class="nav-label">Stats</span></button>
+    <button class="nav-item" data-page="ledger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h11l-3-3M17 17H6l3 3"/></svg><span class="nav-label">Ledger</span></button>
     <button class="nav-item" data-page="wallet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span class="nav-label">Chits</span></button>
     <button class="nav-item" data-page="profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4.5 5-6 8-6s6.5 1.5 8 6"/></svg><span class="nav-label">Profile</span></button>
   </nav>
@@ -522,6 +547,43 @@
     <div class="fgroup" id="bkIfscG" style="margin-bottom:0"><label for="bkIfsc">IFSC <span class="req">*</span> <button type="button" class="info-i" data-info="Type the 11-character IFSC — the bank and branch are filled in automatically when you&#39;re online." aria-label="More info">i</button></label><input id="bkIfsc" maxlength="11" placeholder="e.g. SBIN0001234" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase;letter-spacing:1px"><div class="ferr" id="bkIfscErr">IFSC is 11 characters: 4 letters, 0, then 6 letters or digits.</div><div class="fhint" id="bkIfscHint">Printed on your cheque book or passbook.</div><div class="lookup-card hidden" id="bkBranch"></div></div>
   </div>
   <div class="sheet-foot"><button class="btn btn-danger hidden" id="bkDelete">Delete</button><button class="btn btn-primary btn-grow" id="bkSave">Add bank account</button></div>
+</div></div>
+
+<div class="sheet-overlay" id="lendSheet"><div class="sheet">
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="lTitle">Add to ledger</div><div class="sheet-sub">Fields marked <span class="req">*</span> are required.</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-scroll">
+    <div class="form-alert" id="lendAlert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><span></span></div>
+    <div class="segmented" id="lDir" style="margin-bottom:16px"><div class="seg-thumb"></div><button type="button" class="seg-btn sel" data-dir="lent">I gave money</button><button type="button" class="seg-btn" data-dir="borrowed">I borrowed money</button></div>
+    <div class="fgroup" id="lNameG"><label for="lName" id="lNameLabel">Given to <span class="req">*</span></label><input id="lName" maxlength="40" placeholder="e.g. Ravi" autocomplete="off"><div class="ferr">Enter a name (up to 40 characters).</div></div>
+    <div class="fgroup"><label for="lNote">What for</label><input id="lNote" maxlength="60" placeholder="e.g. Hand loan, medical, wedding" autocomplete="off"></div>
+    <div class="frow">
+      <div class="fgroup" id="lAmtG"><label for="lAmt">Amount <span class="req">*</span></label><div class="money-wrap"><input id="lAmt" type="text" inputmode="decimal" data-money placeholder="50,000" autocomplete="off"></div><div class="ferr">Enter ₹1 – ₹10,00,00,000.</div></div>
+      <div class="fgroup" id="lDateG"><label for="lDate" id="lDateLabel">Given on <span class="req">*</span></label><input id="lDate" type="date"><div class="ferr">Pick a date up to today.</div></div>
+    </div>
+    <div class="switch-row" id="lIntRow"><div><div class="sr-label">With interest</div><div class="sr-sub">Simple interest on what's still outstanding</div></div><span class="switch" id="lInt" role="switch" aria-checked="false"></span></div>
+    <div class="frow hidden" id="lIntFields">
+      <div class="fgroup" id="lRateG"><label for="lRate">Interest rate (%) <span class="req">*</span></label><input id="lRate" type="text" inputmode="decimal" data-money placeholder="2" autocomplete="off"><div class="ferr">Enter 0.01 – 100.</div></div>
+      <div class="fgroup"><span class="flabel">Per</span><div class="segmented" id="lPer"><div class="seg-thumb"></div><button type="button" class="seg-btn sel" data-per="month">Month</button><button type="button" class="seg-btn" data-per="year">Year</button></div></div>
+    </div>
+    <div class="switch-row" id="lTenRow"><div><div class="sr-label">Fixed tenure</div><div class="sr-sub">Optional — when it should be paid back</div></div><span class="switch" id="lTen" role="switch" aria-checked="false"></span></div>
+    <div class="fgroup hidden" id="lTenG"><label for="lTenM">Tenure in months <span class="req">*</span></label><input id="lTenM" type="text" inputmode="numeric" data-int placeholder="12" autocomplete="off"><div class="ferr">Enter 1 – 600 months.</div><div class="fhint" id="lTenHint"></div></div>
+    <div class="calc-box" id="lCalc" style="margin-bottom:0"></div>
+  </div>
+  <div class="sheet-foot"><button class="btn btn-danger hidden" id="lendDelete">Delete</button><button class="btn btn-primary btn-grow" id="lendSave">Add to ledger</button></div>
+</div></div>
+
+<div class="sheet-overlay" id="lendPaySheet"><div class="sheet">
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="lpTitle">Record payment</div><div class="sheet-sub" id="lpSub"></div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-scroll">
+    <div class="frow">
+      <div class="fgroup" id="lpAmtG"><label for="lpAmt">Amount <span class="req">*</span></label><div class="money-wrap"><input id="lpAmt" type="text" inputmode="decimal" data-money autocomplete="off"></div><div class="ferr" id="lpAmtErr">Enter an amount.</div></div>
+      <div class="fgroup" id="lpDateG"><label for="lpDate">On <span class="req">*</span></label><input id="lpDate" type="date"><div class="ferr">Pick a date from the start date up to today.</div></div>
+    </div>
+    <div class="calc-box" id="lpCalc"></div>
+    <span class="flabel" id="lpHistLabel">Payments so far</span>
+    <div class="rounds-view" id="lpHist" style="margin-bottom:0"></div>
+  </div>
+  <div class="sheet-foot"><button class="btn btn-secondary" data-close>Cancel</button><button class="btn btn-primary btn-grow" id="lpSave">Record payment</button></div>
 </div></div>
 
 <div class="sheet-overlay" id="lateSheet"><div class="sheet">

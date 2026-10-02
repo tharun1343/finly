@@ -4,8 +4,9 @@ import { store, commitState, replaceState, onSyncStatus, syncStatus, scheduleSyn
 import { MAX_FILES, prepareFile, putLocal, thumbUrl, openAttachment, openBlob, syncFiles, FileError } from './files.js';
 import { toast, layoutFab, openSheet, closeSheet, confirmBox, setInvalid, showAlert, clearForm, scrollToError, setBusy, bindSwitch, setSwitch, isOn,
   moveThumb, bindSeg, moveAllThumbs, setNum, bindNumeric, enhanceSelect, setSelect, setSelectIcons, makeReminderPicker, remSummary, withTransition, flip, handleBackInOverlays, footShadow, fmtNumInput } from './ui.js';
-import { isNative, APP_VERSION, APK_URL, setBarsStyle, scheduleReminders, notifyPermission, requestNotifyPermission, saveFile, checkForUpdate, openExternal, notifyUpdate, prepareUpdateChannel } from './native.js';
+import { isNative, APP_VERSION, APK_URL, setBarsStyle, scheduleReminders, notifyPermission, requestNotifyPermission, saveFile, checkForUpdate, openExternal, notifyUpdate, prepareUpdateChannel, testNotification } from './native.js';
 import { paymentRows, summaryRow, buildCsv, buildPdf } from './export.js';
+import { lendState, lendDue, splitPayment, rateLabel } from './ledger.js';
 import { BANK_GROUPS, OTHER_BANK, findBank, bankFromIfsc, shortName, IFSC_RE, maskAcct, bankBadgeHTML, bankColor, lookupIfsc } from './banks.js';
 import { PIN_RE, lookupPin, ageFrom } from './places.js';
 import { E3D, AVATARS, e3dCode } from './e3d-list.js';
@@ -19,8 +20,12 @@ let onLogout = () => {};
 ================================================================ */
 const cat = id => st().cats.find(c => c.id === id);
 const findItem = id => st().items.find(i => i.id === id);
-const activeItems = () => st().items.filter(i => i.status === 'active');
-const closedItems = () => st().items.filter(i => i.status === 'closed').sort((a, b) => dayNum(b.closedOn) - dayNum(a.closedOn));
+const activeItems = () => st().items.filter(i => i.status === 'active' && i.kind !== 'lend');
+const closedItems = () => st().items.filter(i => i.status === 'closed' && i.kind !== 'lend').sort((a, b) => dayNum(b.closedOn) - dayNum(a.closedOn));
+/* Ledger entries (money lent or borrowed) live with the other items but are kept out of EMI/chit totals. */
+const lends = () => st().items.filter(i => i.kind === 'lend');
+const activeLends = () => lends().filter(i => i.status === 'active');
+const lendWho = it => it.dir === 'lent' ? `Collect from ${it.person}` : `Repay ${it.person}`;
 /** Round r's date. Once a chit has an anchor (a round's actual date), later rounds follow it instead of the start date. */
 const roundDate = (c, r) => c.anchorRound && c.anchorDate && r > c.anchorRound
   ? addMonths(c.anchorDate, (r - c.anchorRound) * c.interval, parseISO(c.anchorDate).getDate())
@@ -63,11 +68,17 @@ function computeAlerts(){
     if(!offs.length || paidRecently(it)) continue;
     if(d <= Math.max(...offs)) out.push({ it, due, d });
   }
+  for(const it of activeLends()){
+    const due = lendDue(it); if(!due) continue;
+    const d = diffDays(T, due); if(d < 0 || d <= Math.max(...(it.reminders ?? [1]))) out.push({ it, due, d });
+  }
   return out.sort((a, b) => a.d - b.d);
 }
 function reminderPlan(){
+  const lendEntries = activeLends().filter(lendDue).map(it => ({ id:it.id, name:lendWho(it), due:lendDue(it), offsets:it.reminders ?? [1],
+    amount: lendState(it, lendDue(it)).outstanding, lend:true }));
   return { enabled: st().settings.alertsOn, entries: activeItems().map(it => ({ id:it.id, name:it.name, due:nextDue(it), offsets:effReminders(it),
-    amount: it.kind === 'chit' ? it.installment : it.amount, chit: it.kind === 'chit', round: it.kind === 'chit' ? it.roundsDone + 1 : null })) };
+    amount: it.kind === 'chit' ? it.installment : it.amount, chit: it.kind === 'chit', round: it.kind === 'chit' ? it.roundsDone + 1 : null })).concat(lendEntries) };
 }
 
 function totals(){
@@ -346,7 +357,7 @@ function renderSync(s = syncStatus()){
   $('#syncSub').textContent = `Last synced ${ago(s.lastSync)}`;
 }
 
-function render(){ renderHeader(); renderHome(); renderStats(); renderWallet(); renderProfile(); renderBell(); renderSync(); flushBars(); queueFabCheck(); }
+function render(){ renderHeader(); renderHome(); renderStats(); renderLedger(); renderWallet(); renderProfile(); renderBell(); renderSync(); flushBars(); queueFabCheck(); }
 
 export function applySettings(){
   const s = st().settings, root = document.documentElement, v = paletteVars(s.palette, s.theme);
@@ -364,15 +375,16 @@ export function applySettings(){
 /* ================================================================
    NAVIGATION
 ================================================================ */
-const ORDER = ['home', 'stats', 'wallet', 'profile'];
-function moveNavInd(){ const b = $(`.nav-item[data-page="${page}"]`), ind = $('#navInd'); if(!b || !b.offsetWidth) return; ind.style.left = b.offsetLeft + 'px'; ind.style.width = b.offsetWidth + 'px'; }
+const ORDER = ['home', 'ledger', 'wallet', 'profile', 'stats'];
+const navPage = () => page === 'stats' ? 'profile' : page;   // Stats lives under Profile
+function moveNavInd(){ const b = $(`.nav-item[data-page="${navPage()}"]`), ind = $('#navInd'); if(!b || !b.offsetWidth) return; ind.style.left = b.offsetLeft + 'px'; ind.style.width = b.offsetWidth + 'px'; }
 function go(p){
   const dir = Math.sign(ORDER.indexOf(p) - ORDER.indexOf(page));
   page = p;
   $$('.screen').forEach(s => { s.style.setProperty('--dir', dir); s.classList.toggle('active', s.id === 'screen-' + p); });
-  $$('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === p));
+  $$('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === navPage()));
   moveNavInd();
-  const hasFab = p === 'home' || p === 'wallet';
+  const hasFab = p === 'home' || p === 'wallet' || p === 'ledger';
   $('#fab').classList.toggle('fab-hidden', !hasFab); $('#fab').classList.remove('fab-away');
   $('#app').classList.toggle('has-fab', hasFab);
   setTimeout(queueFabCheck, 450);
@@ -382,6 +394,7 @@ function go(p){
 export function handleBack(){
   if(forcedUpdate) return true;
   if(handleBackInOverlays()) return true;
+  if(page === 'stats'){ go('profile'); return true; }
   if(page !== 'home'){ go('home'); return true; }
   return false;
 }
@@ -389,6 +402,7 @@ export function openItemFromNotification(id){
   const it = id && findItem(id);
   closeSheet(); filter = 'all';
   if(!it) return go('home');
+  if(it.kind === 'lend'){ go('ledger'); setTimeout(() => highlight(`#lgList [data-id="${id}"], #lgClosedList [data-id="${id}"]`), 380); return; }
   if(it.kind === 'chit'){ go('wallet'); setTimeout(() => highlight(`#chitList [data-id="${id}"]`), 380); }
   else { go('home'); renderHome(); flushBars(); setTimeout(() => highlight(`#cardList [data-id="${id}"]`), 380); }
 }
@@ -729,15 +743,20 @@ function roundsTotal(){
   $('#cRoundsTotal').innerHTML = count ? `${count} round${count === 1 ? '' : 's'} · you paid <b>${fmtMoney(paid)}</b><br>Total commission <b class="pos">+${fmtMoney(comm)}</b>`
     + (bid >= 0 ? `<br>Took the pot in round ${takenR} · bid <b>${fmtMoney(bid)}</b>${pot > bid ? ` · received <b>${fmtMoney(pot - bid)}</b>` : ''}` : '') : '';
 }
+/** Paid and commission add up to the installment: changing either one fills in the other. */
+function linkPaidComm(row, f, I){
+  const paid = row.querySelector('[data-f="paid"]'), comm = row.querySelector('[data-f="comm"]');
+  if(!(I > 0) || !paid || !comm || (f !== 'paid' && f !== 'comm')) return;
+  const src = f === 'paid' ? paid : comm, dst = f === 'paid' ? comm : paid, v = num(src.value);
+  if(src.value.trim() === '' || !(v >= 0)) return;
+  dst.value = fmtNumInput(String(round2(Math.max(0, I - v))), true);
+}
 function onRoundsInput(e){
   if(e.target.dataset.f === 'date') chitSummary();
   const f = e.target.dataset.f, row = e.target.closest('.round-row'); if(!row) return;
   const o = roundRows[+row.dataset.r - 1] ||= {};
-  if(f === 'paid') o.paidTouched = true;
-  if(f === 'comm' && !o.paidTouched){
-    const I = num($('#cInst').value);
-    if(I > 0) row.querySelector('[data-f="paid"]').value = fmtNumInput(String(round2(Math.max(0, I - (num(e.target.value) || 0)))), true);
-  }
+  if(f === 'paid' && !row.querySelector('[data-f="comm"]')) o.paidTouched = true;
+  linkPaidComm(row, f, num($('#cInst').value));
   roundsTotal();
 }
 
@@ -1091,6 +1110,191 @@ async function saveRound(){
 }
 
 /* ================================================================
+   LEDGER — money lent to or borrowed from people
+================================================================ */
+let lgFilter = 'all';
+const lendColor = it => it.dir === 'lent' ? 'var(--gold)' : 'var(--rose)';
+const lendGlyph = it => e3d(it.dir === 'lent' ? '💸' : '💵');
+function lendCard(it, i){
+  const s_ = lendState(it, T), due = lendDue(it), d = due ? diffDays(T, due) : null, lent = it.dir === 'lent';
+  const when = !due ? `<span class="due-text">Since ${fmtDate(it.date)}</span>`
+    : d < 0 ? `<span class="badge due">Overdue</span><span class="due-text urgent">Was due ${fmtDate(due)}</span>`
+    : `<span class="due-text ${d <= 7 ? 'urgent' : ''}">Due ${fmtDate(due)}</span>`;
+  const pct = due ? Math.max(0, Math.min(100, Math.round(diffDays(it.date, T) / Math.max(1, diffDays(it.date, due)) * 100))) : 0;
+  return `<article class="item-card ${enterCls('l_' + it.id)}" data-id="${it.id}" style="--accent:${lendColor(it)};--i:${i}">
+    <div class="ic-top"><div class="ic-id"><div class="glyph">${lendGlyph(it)}</div><div style="min-width:0"><div class="ic-name">${esc(it.person)}</div>
+      <div class="ic-meta"><span class="badge ${lent ? 'save' : 'debt'}">${lent ? 'You gave' : 'You borrowed'}</span><span class="badge soft">${esc(rateLabel(it))}</span>${when}</div>
+      ${it.note ? `<div class="ic-note">${esc(it.note)}</div>` : ''}</div></div>
+      <div class="ic-amt"><div class="amt">${fmtMoney(s_.outstanding)}</div><div class="per">${lent ? 'to receive' : 'to pay back'}</div></div></div>
+    ${due ? `<div class="progress-row"><div class="progress-labels"><span>Tenure <b>${it.tenure} month${it.tenure === 1 ? '' : 's'}</b></span><span>${pct}%</span></div>${barHTML('l_' + it.id, pct)}</div>` : ''}
+    <div class="ic-foot"><div class="figs">
+      <div class="fig"><span class="fig-label">${lent ? 'Given' : 'Borrowed'}</span><span class="fig-value">${fmtMoney(it.amount)}</span></div>
+      ${it.interest ? `<div class="fig"><span class="fig-label">Interest so far</span><span class="fig-value ${lent ? 'pos' : 'neg'}">+${fmtMoney(s_.accrued)}</span></div>` : ''}
+      ${s_.paid ? `<div class="fig"><span class="fig-label">${lent ? 'Received' : 'Repaid'}</span><span class="fig-value">${fmtMoney(s_.paid)}</span></div>` : ''}</div>
+      <div class="actions"><button class="round-btn ghost" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>
+      <button class="pay-btn" data-act="lpay" aria-label="Record a payment for ${esc(it.person)}">${ICON.check}<span>Record payment</span></button></div></div>
+  </article>`;
+}
+function renderLedger(){
+  const act = activeLends(), lent = act.filter(i => i.dir === 'lent'), bor = act.filter(i => i.dir === 'borrowed');
+  const sum = list => list.reduce((t, it) => t + lendState(it, T).outstanding, 0), intr = list => list.reduce((t, it) => t + lendState(it, T).accrued, 0);
+  countTo($('#lgGet'), 'lget', Math.round(sum(lent))); countTo($('#lgOwe'), 'lowe', Math.round(sum(bor)));
+  $('#lgGetFoot').textContent = lent.length ? `${lent.length} ${lent.length === 1 ? 'person' : 'people'}${intr(lent) ? ` · +${fmtMoney(intr(lent))} interest` : ''}` : 'Nothing lent';
+  $('#lgOweFoot').textContent = bor.length ? `${bor.length} ${bor.length === 1 ? 'person' : 'people'}${intr(bor) ? ` · ${fmtMoney(intr(bor))} interest` : ''}` : 'Nothing borrowed';
+  const list = act.filter(i => lgFilter === 'all' || i.dir === lgFilter)
+    .sort((a, b) => (lendDue(a) ? dayNum(lendDue(a)) : 1e9) - (lendDue(b) ? dayNum(lendDue(b)) : 1e9) || dayNum(b.date) - dayNum(a.date));
+  $('#lgList').innerHTML = list.length ? list.map(lendCard).join('')
+    : `<div class="empty"><div class="em">${e3d('🤝')}</div><b>${act.length ? 'Nothing here' : 'No money lent or borrowed'}</b>Keep track of money you gave someone or borrowed, with interest if any.
+       <div class="empty-actions"><button class="btn btn-primary btn-sm" data-lnew="lent">I gave money</button><button class="btn btn-secondary btn-sm" data-lnew="borrowed">I borrowed money</button></div></div>`;
+  const done = lends().filter(i => i.status === 'closed').sort((a, b) => dayNum(b.closedOn) - dayNum(a.closedOn));
+  $('#lgClosedHead').classList.toggle('hidden', !done.length);
+  $('#lgClosedCount').textContent = done.length ? `(${done.length})` : '';
+  $('#lgClosedList').innerHTML = done.map(it => `<div class="closed-row" data-id="${it.id}" style="--accent:${lendColor(it)}"><div class="glyph">${lendGlyph(it)}</div>
+    <div style="min-width:0"><div class="cr-name">${esc(it.person)}</div><div class="cr-sub">Settled ${fmtDate(it.closedOn)} · ${it.dir === 'lent' ? 'gave' : 'borrowed'} ${fmtMoney(it.amount)}</div></div>
+    <div class="cr-amt"><span>${it.dir === 'lent' ? 'Got back' : 'Repaid'}</span>${fmtMoney(lendState(it, T).paid)}</div>
+    <button class="mini-btn" data-act="lpay" aria-label="Payments for ${esc(it.person)}">${ICON.history}</button><button class="mini-btn" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button></div>`).join('');
+}
+function onLedgerClick(e){
+  const nw = e.target.closest('[data-lnew]'); if(nw) return openLendSheet(null, nw.dataset.lnew);
+  const b = e.target.closest('[data-act]'); if(!b) return;
+  const it = findItem(b.closest('[data-id]')?.dataset.id); if(!it) return;
+  if(b.dataset.act === 'ledit') openLendSheet(it);
+  else if(b.dataset.act === 'lpay') openLendPay(it);
+}
+
+/* ---------- add / edit an entry ---------- */
+let editingLend = null, lendDir = 'lent', lendPer = 'month';
+function pickSeg(id, attr, val){ $$(`#${id} .seg-btn`).forEach(b => b.classList.toggle('sel', b.dataset[attr] === val)); requestAnimationFrame(() => moveThumb($('#' + id))); }
+function lendForm(){
+  const interest = isOn('lInt') ? { rate: num($('#lRate').value), per: lendPer } : null, tenure = isOn('lTen') ? num($('#lTenM').value) : null;
+  return { dir: lendDir, person: $('#lName').value.trim(), note: $('#lNote').value.trim(), amount: num($('#lAmt').value), date: $('#lDate').value, interest, tenure,
+    payments: editingLend?.payments || [] };
+}
+function drawLendCalc(){
+  const f = lendForm(), lent = lendDir === 'lent';
+  $('#lNameLabel').innerHTML = (lent ? 'Given to' : 'Borrowed from') + ' <span class="req">*</span>';
+  $('#lDateLabel').innerHTML = (lent ? 'Given on' : 'Borrowed on') + ' <span class="req">*</span>';
+  $('#lIntFields').classList.toggle('hidden', !f.interest); $('#lTenG').classList.toggle('hidden', !isOn('lTen'));
+  if(f.interest) requestAnimationFrame(() => moveThumb($('#lPer')));
+  const okTen = isInt(f.tenure) && f.tenure >= 1 && f.tenure <= 600, due = okTen && f.date ? addMonths(f.date, f.tenure) : null;
+  $('#lTenHint').textContent = due ? `Due around ${fmtDate(due)}` : '';
+  const box = $('#lCalc');
+  if(!(f.amount > 0) || !f.date || (f.interest && !(f.interest.rate > 0))){ box.innerHTML = '<div class="calc-line"><span>Enter the amount, date' + (f.interest ? ' and rate' : '') + ' to see the totals.</span></div>'; footShadow($('#lendSheet')); return; }
+  const now = lendState(f, diffDays(T, f.date) > 0 ? f.date : T), atDue = due ? lendState(f, due) : null, word = lent ? 'to receive' : 'to pay back';
+  box.innerHTML = (f.interest ? `<div class="calc-line"><span>Interest per month</span><b>${fmtMoney(now.monthly)}</b></div>
+      <div class="calc-line"><span>Interest so far</span><b class="${lent ? 'pos' : 'neg'}">+${fmtMoney(now.accrued)}</b></div>` : '')
+    + (now.paid ? `<div class="calc-line"><span>${lent ? 'Received' : 'Repaid'} so far</span><b>${fmtMoney(now.paid)}</b></div>` : '')
+    + `<div class="calc-line total"><span>Today, ${word}</span><b>${fmtMoney(now.outstanding)}</b></div>`
+    + (atDue ? `<div class="calc-line"><span>At the end of the tenure (${fmtDate(due)})</span><b>${fmtMoney(atDue.outstanding)}</b></div>`
+      + (f.interest ? `<div class="calc-line"><span>Total interest over ${f.tenure} month${f.tenure === 1 ? '' : 's'}</span><b class="${lent ? 'pos' : 'neg'}">${fmtMoney(atDue.accrued)}</b></div>` : '') : '');
+  footShadow($('#lendSheet'));
+}
+function openLendSheet(it, dir){
+  editingLend = it || null; clearForm('lendSheet');
+  lendDir = it ? it.dir : (dir || (lgFilter === 'borrowed' ? 'borrowed' : 'lent')); lendPer = it?.interest?.per || 'month';
+  pickSeg('lDir', 'dir', lendDir); pickSeg('lPer', 'per', lendPer);
+  $('#lTitle').textContent = it ? `Edit · ${it.person}` : 'Add to ledger';
+  $('#lName').value = it?.person || ''; $('#lNote').value = it?.note || '';
+  setNum('lAmt', it ? it.amount : ''); $('#lDate').value = it?.date || T; $('#lDate').max = T;
+  setSwitch('lInt', !!it?.interest); setNum('lRate', it?.interest ? it.interest.rate : '');
+  setSwitch('lTen', !!it?.tenure); setNum('lTenM', it?.tenure || '');
+  $('#lendDelete').classList.toggle('hidden', !it);
+  $('#lendSave').textContent = it ? 'Update entry' : 'Add to ledger';
+  drawLendCalc();
+  openSheet('lendSheet');
+  requestAnimationFrame(() => { moveThumb($('#lDir')); moveThumb($('#lPer')); });
+}
+function saveLend(){
+  clearForm('lendSheet');
+  const f = lendForm(), firstPay = [...f.payments].sort((a, b) => dayNum(a.date) - dayNum(b.date))[0]?.date;
+  let bad = setInvalid('lNameG', !f.person);
+  bad += setInvalid('lAmtG', !(f.amount >= 1 && f.amount <= 1e8));
+  bad += setInvalid('lDateG', !f.date || diffDays(T, f.date) > 0 || (firstPay && diffDays(firstPay, f.date) > 0));
+  if(f.interest) bad += setInvalid('lRateG', !(f.interest.rate >= 0.01 && f.interest.rate <= 100));
+  if(isOn('lTen')) bad += setInvalid('lTenG', !(isInt(f.tenure) && f.tenure >= 1 && f.tenure <= 600));
+  if(bad){ showAlert('lendAlert', `Please fix ${bad} highlighted field${bad > 1 ? 's' : ''}.`); scrollToError('lendSheet'); return; }
+  closeSheet('lendSheet');
+  const rec = { dir:f.dir, person:f.person, note:f.note, amount:round2(f.amount), date:f.date, interest: f.interest ? { rate:round2(f.interest.rate), per:f.interest.per } : null, tenure: isOn('lTen') ? f.tenure : null };
+  if(editingLend){
+    const id = editingLend.id;
+    commit(() => { const x = findItem(id); Object.assign(x, rec);
+      const left = lendState(x, T).outstanding;
+      if(x.payments.length && left <= 0.5){ if(x.status !== 'closed'){ x.status = 'closed'; x.closedOn = x.payments[x.payments.length - 1].date; } }
+      else { x.status = 'active'; delete x.closedOn; } },
+      { type:'success', title:'Entry updated', body:f.person });
+    flashCard(id);
+  } else {
+    const id = uid();
+    commit(() => st().items.push({ id, kind:'lend', catId:null, ...rec, payments:[], reminders:null, status:'active', files:[] }),
+      { type:'success', title: f.dir === 'lent' ? `Gave ${fmtMoney(f.amount)} to ${f.person}` : `Borrowed ${fmtMoney(f.amount)} from ${f.person}`,
+        body: rec.tenure ? `Due ${fmtDate(addMonths(f.date, rec.tenure))} · you'll get a reminder` : rateLabel(rec) });
+    lgFilter = 'all'; pickSeg('lgFilter', 'f', 'all');
+    if(page !== 'ledger') go('ledger');
+    renderLedger(); flushBars();
+    setTimeout(() => highlight(`#lgList [data-id="${id}"]`), 380);
+    maybeAskNotify();
+  }
+}
+function deleteLend(){
+  const it = editingLend; if(!it) return;
+  closeSheet('lendSheet');
+  confirmBox({ title:`Delete ${it.person}?`, body:`This entry${it.payments.length ? ` and its ${it.payments.length} payment${it.payments.length === 1 ? '' : 's'}` : ''} will be removed. You can undo right after.`, onYes: async () => {
+    await animateOut(it.id);
+    commit(() => { st().items = st().items.filter(i => i.id !== it.id); }, { type:'warning', title:'Deleted', body:it.person });
+  }});
+}
+
+/* ---------- record money received / repaid ---------- */
+let payLend = null;
+function openLendPay(it){
+  payLend = it; clearForm('lendPaySheet');
+  const lent = it.dir === 'lent', s_ = lendState(it, T), closed = it.status === 'closed';
+  $('#lpTitle').textContent = closed ? `${it.person} · payments` : lent ? `Money received from ${it.person}` : `Repayment to ${it.person}`;
+  $('#lpSub').textContent = closed ? `Settled ${fmtDate(it.closedOn)}` : `Outstanding ${fmtMoney(s_.outstanding)}${s_.interest ? ` (principal ${fmtMoney(s_.principal)} + interest ${fmtMoney(s_.interest)})` : ''}`;
+  const last = it.payments.length ? [...it.payments].sort((a, b) => dayNum(b.date) - dayNum(a.date))[0].date : it.date;
+  $('#lpDate').min = last; $('#lpDate').max = T; $('#lpDate').value = T;
+  setNum('lpAmt', closed ? '' : s_.outstanding);
+  $$('#lendPaySheet .frow, #lpCalc, #lpSave').forEach(el => el.classList.toggle('hidden', closed));
+  $('#lpSave').textContent = lent ? 'Record money received' : 'Record repayment';
+  $('#lpHist').innerHTML = it.payments.length ? [...it.payments].sort((a, b) => dayNum(b.date) - dayNum(a.date))
+      .map(p => `<div class="h-row"><span class="h-round">${e3d(lent ? '💰' : '💸')}</span><span class="h-desc">${lent ? 'Received' : 'Repaid'}<br><span class="h-date">${fmtDate(p.date)}</span></span><span class="h-amt">${fmtMoney(p.amount)}</span></div>`).join('')
+    : '<div class="h-desc" style="padding:6px 0">No payments yet.</div>';
+  drawLendPay();
+  openSheet('lendPaySheet');
+}
+function lendPayCheck(){
+  const it = payLend, v = num($('#lpAmt').value), date = $('#lpDate').value;
+  if(!date || !(v > 0)) return { ok:false };
+  const sp = splitPayment(it, v, date);
+  return { ok: v <= sp.before.outstanding + 0.5, v, date, sp };
+}
+function drawLendPay(){
+  const it = payLend, c = lendPayCheck(), lent = it.dir === 'lent';
+  $('#lpAmtG').classList.toggle('invalid', !!c.sp && !c.ok);
+  if(c.sp && !c.ok) $('#lpAmtErr').textContent = `More than the ${fmtMoney(c.sp.before.outstanding)} outstanding.`;
+  $('#lpCalc').innerHTML = !c.sp ? '<div class="calc-line"><span>Enter the amount and date.</span></div>'
+    : `<div class="calc-line"><span>Outstanding on ${fmtDate(c.date)}</span><b>${fmtMoney(c.sp.before.outstanding)}</b></div>
+      ${c.sp.before.interest ? `<div class="calc-line"><span>Clears interest</span><b>${fmtMoney(c.sp.toInterest)}</b></div>` : ''}
+      <div class="calc-line"><span>Clears principal</span><b>${fmtMoney(c.sp.toPrincipal)}</b></div>
+      <div class="calc-line total"><span>${c.sp.after <= 0.5 ? 'Fully settled' : lent ? 'Still to receive' : 'Still to pay back'}</span><b class="${c.sp.after <= 0.5 ? 'pos' : ''}">${c.sp.after <= 0.5 ? '🎉' : fmtMoney(c.sp.after)}</b></div>`;
+  $('#lpSave').disabled = !c.ok;
+  footShadow($('#lendPaySheet'));
+}
+async function saveLendPay(){
+  const it = payLend, c = lendPayCheck();
+  if(setInvalid('lpDateG', !c.date || diffDays(T, c.date) > 0 || dayNum(c.date) < dayNum($('#lpDate').min))) return;
+  if(!c.ok) return;
+  const settles = c.sp.after <= 0.5, id = it.id, lent = it.dir === 'lent';
+  closeSheet('lendPaySheet');
+  if(settles) await animateOut(id);
+  commit(() => { const x = findItem(id); x.payments.push({ date:c.date, amount:round2(c.v) });
+      if(settles){ x.status = 'closed'; x.closedOn = c.date; } },
+    settles ? { type:'success', title:`${it.person} — all settled 🎉`, body:'Moved to Settled.' }
+      : { type:'success', title: lent ? `Received ${fmtMoney(c.v)}` : `Repaid ${fmtMoney(c.v)}`, body:`${it.person} · ${fmtMoney(c.sp.after)} ${lent ? 'still to receive' : 'still to pay back'}` });
+  if(!settles) flashCard(id);
+}
+
+/* ================================================================
    CATEGORIES
 ================================================================ */
 const EMOJIS = ['🏦','🤝','🏠','📶','📱','💡','🚗','🏍️','🎓','🏥','💊','🛒','🍔','⛽','✈️','🎮','🎵','📚','👕','🐾','🎁','💳','🧾','💰','🛠️','👶','🏋️','☕','🌐','📺','🔌','💼'];
@@ -1343,11 +1547,11 @@ function openAlerts(){
   $('#notifSub').textContent = !st().settings.alertsOn ? 'Reminders are turned off' : a.length ? (a.some(x => x.d < 0) ? `${a.filter(x => x.d < 0).length} overdue · ${a.length} in total — tap one to open it` : `${a.length} due soon — tap one to open it`) : 'Nothing due soon';
   $('#notifList').innerHTML = !st().settings.alertsOn
     ? `<div class="empty"><div class="em">${e3d('🔕')}</div><b>Reminders are off</b>Turn them on to get notified before due dates.<div class="empty-actions"><button class="btn btn-primary btn-sm" id="turnOnAlerts">Turn on reminders</button></div></div>`
-    : a.length ? a.map(({ it, due, d }, i) => { const c = cat(it.catId);
+    : a.length ? a.map(({ it, due, d }, i) => { const c = cat(it.catId), isLend = it.kind === 'lend';
         const when = d < 0 ? `Overdue ${-d}d` : d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : `In ${d} days`;
-        const what = it.kind === 'chit' ? `Round ${it.roundsDone + 1} · ${fmtMoney(it.installment)}` : fmtMoney(it.amount);
-        return `<button class="notif-item" data-goto="${it.id}" style="--i:${i}"><span class="notif-ic glyph" style="--accent:${catColor(c)}">${glyphHTML(c, it)}</span>
-          <span style="min-width:0"><span class="notif-t">${esc(it.name)}</span><span class="notif-s">${what} · ${fmtDate(due)}</span></span>
+        const what = isLend ? `${fmtMoney(lendState(it, T).outstanding)} ${it.dir === 'lent' ? 'to collect' : 'to repay'}` : it.kind === 'chit' ? `Round ${it.roundsDone + 1} · ${fmtMoney(it.installment)}` : fmtMoney(it.amount);
+        return `<button class="notif-item" data-goto="${it.id}" style="--i:${i}"><span class="notif-ic glyph" style="--accent:${isLend ? lendColor(it) : catColor(c)}">${isLend ? lendGlyph(it) : glyphHTML(c, it)}</span>
+          <span style="min-width:0"><span class="notif-t">${esc(isLend ? lendWho(it) : it.name)}</span><span class="notif-s">${what} · ${fmtDate(due)}</span></span>
           <span class="notif-when badge ${d <= 1 ? 'due' : 'soon'}">${when}</span></button>`; }).join('')
     : `<div class="empty"><div class="em">${e3d('✅')}</div><b>You're all caught up</b>Nothing is inside its reminder window right now.</div>`;
   seenSig = alertSig; renderBell();
@@ -1366,6 +1570,15 @@ async function setAlerts(on){
   }
   setSetting({ alertsOn:on });
   toast({ type: on ? 'success' : 'warning', title: on ? 'Reminders on' : 'Reminders off', body: on ? (isNative ? 'You\'ll get a notification at 9 AM before each due date.' : 'Due items will show in the bell. Phone notifications work in the Android app.') : 'You won\'t be reminded until you turn this back on.' });
+}
+/** Shows under the reminders switch whether this phone will actually show notifications. */
+let notifyBlocked = false;
+async function refreshNotifyStatus(){
+  const sub = $('#alertsSub'); if(!sub) return;
+  if(!isNative){ sub.textContent = 'Due items show in the bell — phone notifications work in the Android app'; return; }
+  const p = await notifyPermission(); notifyBlocked = p !== 'granted';
+  sub.textContent = !st().settings.alertsOn ? 'Off' : notifyBlocked ? 'Notifications are blocked — tap to allow' : 'Phone notification at 9 AM';
+  $('#alertsRow').classList.toggle('warn-row', st().settings.alertsOn && notifyBlocked);
 }
 let askedNotify = false;
 async function maybeAskNotify(){
@@ -1595,9 +1808,28 @@ function wire(){
   catRem = makeReminderPicker($('#catRem'));
 
   $$('.nav-item').forEach(b => b.addEventListener('click', () => go(b.dataset.page)));
+  ['#lgList', '#lgClosedList'].forEach(x => $(x).addEventListener('click', onLedgerClick));
+  bindSeg($('#lgFilter'), b => { lgFilter = b.dataset.f; flip($('#lgList'), renderLedger); flushBars(); });
+  bindSeg($('#lDir'), b => { lendDir = b.dataset.dir; drawLendCalc(); });
+  bindSeg($('#lPer'), b => { lendPer = b.dataset.per; drawLendCalc(); });
+  bindSwitch('lIntRow', 'lInt', on => { drawLendCalc(); if(on) setTimeout(() => $('#lRate').focus({ preventScroll:true }), 60); });
+  bindSwitch('lTenRow', 'lTen', on => { drawLendCalc(); if(on) setTimeout(() => $('#lTenM').focus({ preventScroll:true }), 60); });
+  ['lAmt', 'lDate', 'lRate', 'lTenM'].forEach(id => { $('#' + id).addEventListener('input', drawLendCalc); $('#' + id).addEventListener('change', drawLendCalc); });
+  $('#lendSave').addEventListener('click', saveLend);
+  $('#lendDelete').addEventListener('click', deleteLend);
+  ['lpAmt', 'lpDate'].forEach(id => { $('#' + id).addEventListener('input', drawLendPay); $('#' + id).addEventListener('change', drawLendPay); });
+  $('#lpSave').addEventListener('click', saveLendPay);
+  $('#openStats').addEventListener('click', () => go('stats'));
+  $('#statsBack').addEventListener('click', () => go('profile'));
+  $('#testNotifRow').addEventListener('click', async () => {
+    if(!isNative) return toast({ type:'warning', title:'Works in the Android app', body:'Phone notifications need the installed app.' });
+    const r = await testNotification(); refreshNotifyStatus();
+    if(r === 'sent') toast({ type:'success', title:'Test notification on its way', body:'It should appear in about 5 seconds. If not, check Settings → Apps → Finly → Notifications and Battery.', ms:6000 });
+    else toast({ type:'warning', title:'Notifications are blocked', body:'Allow them in Android Settings → Apps → Finly → Notifications.', ms:7000 });
+  });
   $('#sortBtn').addEventListener('click', () => { sortMode = sortMode === 'due' ? 'amount' : 'due'; $('#sortLabel').textContent = sortMode === 'due' ? 'Due date' : 'Amount'; flip($('#cardList'), renderHome); flushBars(); });
   $('#chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if(!b || b.dataset.f === filter) return; filter = b.dataset.f; flip($('#cardList'), renderHome); flushBars(); });
-  $('#fab').addEventListener('click', () => page === 'wallet' ? openChitSheet(null) : openSheet('chooserSheet'));
+  $('#fab').addEventListener('click', () => page === 'wallet' ? openChitSheet(null) : page === 'ledger' ? openLendSheet(null) : openSheet('chooserSheet'));
   $('#chooseBill').addEventListener('click', () => { closeSheet('chooserSheet'); setTimeout(() => openBillSheet(null), 140); });
   $('#chooseChit').addEventListener('click', () => { closeSheet('chooserSheet'); setTimeout(() => openChitSheet(null), 140); });
   $('#cardList').addEventListener('click', e => { const em = e.target.closest('[data-empty]'); if(em) return em.dataset.empty === 'bill' ? openBillSheet(null) : openChitSheet(null); onCardAction(e); });
@@ -1659,9 +1891,8 @@ function wire(){
   $('#cRounds').addEventListener('change', e => { if(e.target.dataset.f === 'date') chitSummary(); });
   bindSwitch('cEditRoundsRow', 'cEditRounds', toggleEditRounds);
   $('#cEditList').addEventListener('input', e => {
-    const f = e.target.dataset.f, row = e.target.closest('.round-row');
-    if(f === 'paid') row.dataset.paidTouched = '1';
-    if(f === 'comm' && !row.dataset.paidTouched && editingChit) row.querySelector('[data-f="paid"]').value = fmtNumInput(String(round2(Math.max(0, editingChit.installment - (num(e.target.value) || 0)))), true);
+    const row = e.target.closest('.round-row');
+    if(row && editingChit) linkPaidComm(row, e.target.dataset.f, editingChit.installment);
     editRoundsTotal();
   });
   $('#cEditList').addEventListener('change', editRoundsTotal);
@@ -1704,7 +1935,15 @@ function wire(){
   $('#themeRow').addEventListener('click', () => withTransition(() => { setSetting({ theme: st().settings.theme === 'dark' ? 'light' : 'dark' }); }));
   $('#palGrid').addEventListener('click', e => { const b = e.target.closest('.swatch'); if(!b || b.dataset.pal === palKey(st().settings.palette)) return; withTransition(() => setSetting({ palette:b.dataset.pal })); });
   bindSeg($('#textSizeSeg'), b => setSetting({ text:b.dataset.size }));
-  $('#alertsRow').addEventListener('click', () => setAlerts(!st().settings.alertsOn));
+  $('#alertsRow').addEventListener('click', async () => {
+    if(st().settings.alertsOn && isNative && notifyBlocked){
+      const p = await requestNotifyPermission(); await refreshNotifyStatus();
+      if(p === 'granted'){ scheduleReminders(reminderPlan); toast({ type:'success', title:'Notifications allowed', body:'Reminders are set for your due dates.' }); }
+      else toast({ type:'warning', title:'Still blocked', body:'Open Android Settings → Apps → Finly → Notifications and turn them on.', ms:7000 });
+      return;
+    }
+    await setAlerts(!st().settings.alertsOn); refreshNotifyStatus();
+  });
   $('#boldRow').addEventListener('click', () => setSetting({ bold: !st().settings.bold }));
   $('#syncPill').addEventListener('click', () => { if(syncStatus().error === 'auth') return onLogout(true); if(page !== 'home') go('home'); runSync(); });
   $('#syncNowBtn').addEventListener('click', () => { if(!syncStatus().online) return toast({ type:'warning', title:'You\'re offline', body:'Changes are saved on this phone and will upload when you reconnect.' }); runSync(); });
@@ -1768,6 +2007,8 @@ export function startApp(u, { logout }){
   applySettings(); go('home'); render(); layoutFab();
   scheduleReminders(reminderPlan);
   prepareUpdateChannel();
+  refreshNotifyStatus();
+  if(isNative && st().settings.alertsOn) setTimeout(() => maybeAskNotify().then(refreshNotifyStatus).catch(() => {}), 1500);
   scheduleSync(400);
   loadUpdateInfo(); renderUpdate();
   setTimeout(() => checkUpdates(true).catch(() => {}), 2500);
@@ -1780,6 +2021,6 @@ export function startApp(u, { logout }){
 }
 export function onResumeApp(){
   if(!store.uid) return;
-  refreshToday(); render(); scheduleReminders(reminderPlan); scheduleSync(300); checkUpdates(false).catch(() => {});
+  refreshToday(); render(); scheduleReminders(reminderPlan); scheduleSync(300); checkUpdates(false).catch(() => {}); refreshNotifyStatus();
 }
 export { swatchesHTML };

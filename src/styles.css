@@ -857,3 +857,11 @@ input[type=date]:disabled + .date-show{ opacity:.55; }
 .dd-trigger .bank-logo{ margin-right:2px; }
 .acc.static{ margin-top:14px; }
 .acc.static .acc-inner > :first-child{ margin-top:0; }
+
+/* ledger */
+.badge.soft{ background:var(--glass-strong); color:var(--text-dim); }
+.ic-note{ font-size:var(--t-xs); color:var(--text-dim); margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.setting-row.warn-row .setting-sub{ color:var(--warn); font-weight:var(--w6); }
+#screen-stats .back-btn{ margin:0 0 10px; }
+.rounds-view .h-round .e3d{ width:22px; height:22px; }
+.setting-row > .chev{ width:18px; height:18px; color:var(--text-faint); flex-shrink:0; }
