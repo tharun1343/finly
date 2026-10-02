@@ -28,6 +28,11 @@
 :root[data-text="sm"]{ --fs:1; }
 :root[data-text="md"]{ --fs:1.16; }
 :root[data-text="lg"]{ --fs:1.32; }
+:root[data-pitch="1"]:not([data-theme="light"]){
+  --glass:rgba(255,255,255,.035); --glass-strong:rgba(255,255,255,.06); --glass-border:rgba(255,255,255,.08); --stroke:rgba(255,255,255,.07);
+  --shadow:0 20px 40px -14px rgba(0,0,0,.9);
+}
+:root[data-pitch="1"]:not([data-theme="light"]) body{ background:#000; }
 :root[data-theme="light"]{
   color-scheme: light;
   --glass:rgba(255,255,255,.88); --glass-strong:rgba(14,20,45,.06); --glass-border:rgba(14,20,45,.13); --stroke:rgba(14,20,45,.1);
@@ -448,7 +453,7 @@ body.sheet-open .toast-stack{ z-index:70; }
 .update-banner .btn{ margin-left:auto; }
 
 /* palette circles */
-.swatch-grid{ display:grid; grid-template-columns:repeat(5, 1fr); gap:14px 8px; justify-items:center; padding:4px 0 2px; }
+.swatch-grid{ display:grid; grid-template-columns:repeat(6, 1fr); gap:14px 8px; justify-items:center; padding:4px 0 2px; }
 .swatch{ width:42px; height:42px; border-radius:50%; border:none; cursor:pointer; position:relative; padding:0; box-shadow: inset 0 0 0 1px rgba(255,255,255,.12), 0 4px 10px -4px rgba(0,0,0,.4); transition: transform .3s var(--bounce); animation: popIn .45s var(--bounce) both; animation-delay: calc(var(--i,0)*30ms); }
 .swatch::after{ content:""; position:absolute; inset:-5px; border-radius:50%; border:2px solid transparent; transform:scale(.85); transition: border-color .25s, transform .35s var(--bounce); }
 .swatch.sel::after{ border-color:var(--primary); transform:scale(1); }

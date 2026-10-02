@@ -1,5 +1,5 @@
 import { $, $$, esc, ICON, T, refreshToday, parseISO, toISO, addDays, addMonths, dayNum, diffDays, fmtDate, fmtShort, fmtMonth, fmtMoney, round2, uid, clone, num, isInt, reduceMotion, ago } from './util.js';
-import { PALETTES, TOKEN_MAP, paletteVars, swatchStyle, palKey } from './palettes.js';
+import { PALETTES, TOKEN_MAP, paletteVars, swatchStyle, palKey, isPitch } from './palettes.js';
 import { store, commitState, replaceState, onSyncStatus, syncStatus, scheduleSync, runSync, onRemoteChanges, pendingCount, queueFileDelete, clearFileDelete, dueFileDeletes, onAfterSync } from './data.js';
 import { MAX_FILES, prepareFile, putLocal, thumbUrl, openAttachment, openBlob, syncFiles, FileError } from './files.js';
 import { toast, layoutFab, openSheet, closeSheet, confirmBox, setInvalid, showAlert, clearForm, scrollToError, setBusy, bindSwitch, setSwitch, isOn,
@@ -350,7 +350,7 @@ function render(){ renderHeader(); renderHome(); renderStats(); renderWallet(); 
 
 export function applySettings(){
   const s = st().settings, root = document.documentElement, v = paletteVars(s.palette, s.theme);
-  root.dataset.theme = s.theme; root.dataset.text = s.text;
+  root.dataset.theme = s.theme; root.dataset.text = s.text; root.dataset.pitch = isPitch(s.palette) ? '1' : '0';
   Object.entries(TOKEN_MAP).forEach(([k, css]) => root.style.setProperty(css, v[k]));
   $('meta[name="theme-color"]')?.setAttribute('content', v.bg);
   setBarsStyle(s.theme);

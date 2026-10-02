@@ -45,7 +45,12 @@ export const PALETTES = {
   mono:{ name:'Monochrome',
     dark:{ bg:'#0C0C0D', bgElev:'#161618', primary:'#E7E7EA', primary2:'#FFFFFF', accent2:'#A1A1AA', gold:'#E9B949', gold2:'#F5D27E', rose:'#F06B6B', warn:'#F0A04B', onAccent:'#111113' },
     light:{ bg:'#F6F6F7', bgElev:'#FFFFFF', primary:'#18181B', primary2:'#09090B', accent2:'#52525B', gold:'#A16207', gold2:'#CA8A04', rose:'#DC2626', warn:'#C2410C', onAccent:'#FFFFFF' },
-    cats:['#D4D4D8','#E9B949','#F28B8B','#A5B4FC','#C4B5FD','#FDBA74','#93C5FD','#F9A8D4'] }
+    cats:['#D4D4D8','#E9B949','#F28B8B','#A5B4FC','#C4B5FD','#FDBA74','#93C5FD','#F9A8D4'] },
+  /** True black for OLED screens: no background glow, near-black cards. */
+  pitch:{ name:'Pitch Black', pitch:true,
+    dark:{ bg:'#000000', bgElev:'#0B0B0D', primary:'#7AA2F7', primary2:'#A9C1FB', accent2:'#BB9AF7', gold:'#E9C46A', gold2:'#F5D892', rose:'#F7768E', warn:'#FF9E64', onAccent:'#05070D' },
+    light:{ bg:'#EEEEF1', bgElev:'#FFFFFF', primary:'#1F4FD8', primary2:'#163CA8', accent2:'#6D3FD1', ...LIGHT_SEM },
+    cats:['#7AA2F7','#E9C46A','#F7768E','#7DCFFF','#BB9AF7','#FF9E64','#9ECE6A','#F4A3C8'] }
 };
 
 /** Palettes from earlier versions map to their closest current one. */
@@ -53,6 +58,8 @@ const RETIRED = { indigo:'violet', twilight:'violet', plum:'violet', graphite:'s
 export const palKey = k => PALETTES[k] ? k : RETIRED[k] || 'sapphire';
 
 export const TOKEN_MAP = { bg:'--bg', bgElev:'--bg-elev', primary:'--primary', primary2:'--primary-2', accent2:'--accent-2', gold:'--gold', gold2:'--gold-2', rose:'--rose', warn:'--warn', onAccent:'--on-accent' };
+
+export const isPitch = key => !!PALETTES[palKey(key)].pitch;
 
 export function paletteVars(key, theme){
   return { ...PALETTES[palKey(key)][theme] };
