@@ -2,9 +2,27 @@
   "appId": "com.tharun.finly",
   "appName": "Finly",
   "webDir": "dist",
-  "android": { "allowMixedContent": false, "backgroundColor": "#0A0F1D" },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#0A0F1D"
+  },
   "plugins": {
-    "SystemBars": { "insetsHandling": "css", "initialViewportFitValueHint": "cover", "style": "DARK" },
-    "LocalNotifications": { "smallIcon": "ic_stat_finly", "iconColor": "#7C9BFF" }
+    "SystemBars": {
+      "insetsHandling": "css",
+      "initialViewportFitValueHint": "cover",
+      "style": "DARK"
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_finly",
+      "iconColor": "#7C9BFF"
+    },
+    "BackgroundRunner": {
+      "label": "com.tharun.finly.updates",
+      "src": "runners/updates.js",
+      "event": "checkUpdate",
+      "repeat": true,
+      "interval": 360,
+      "autoStart": true
+    }
   }
 }

@@ -64,8 +64,8 @@ let schedTimer = null;
 export function scheduleReminders(build){ clearTimeout(schedTimer); schedTimer = setTimeout(() => doSchedule(build).catch(e => console.warn('Reminder scheduling failed', e)), 800); }
 async function doSchedule(build){
   if(!isNative) return;
-  const pending = await LocalNotifications.getPending();
-  if(pending.notifications.length) await LocalNotifications.cancel({ notifications: pending.notifications.map(n => ({ id:n.id })) });
+  const pending = (await LocalNotifications.getPending()).notifications.filter(n => n.id !== UPDATE_NOTIF_ID);
+  if(pending.length) await LocalNotifications.cancel({ notifications: pending.map(n => ({ id:n.id })) });
   const { enabled, entries } = build();
   if(!enabled || (await notifyPermission()) !== 'granted') return;
   await ensureChannel();
@@ -84,6 +84,24 @@ async function doSchedule(build){
   list.sort((a, b) => a.schedule.at - b.schedule.at);
   if(list.length) await LocalNotifications.schedule({ notifications: list.slice(0, 64) });
 }
+/* ---------- update notifications ---------- */
+// Same id and channel as the background check (public/runners/updates.js), so one version never shows twice.
+const UPDATE_NOTIF_ID = 900001;
+export async function prepareUpdateChannel(){
+  if(!isNative) return;
+  try{ await LocalNotifications.createChannel({ id:'updates', name:'App updates', description:'When a new version of Finly is ready', importance:3, visibility:1 }); }catch{ /* older Android */ }
+}
+/** Posts "update available" once per version. */
+export async function notifyUpdate(version){
+  if(!isNative || !version) return;
+  const key = 'finly-update-notified-' + version;
+  if(localStorage.getItem(key) || (await notifyPermission()) !== 'granted') return;
+  await prepareUpdateChannel();
+  await LocalNotifications.schedule({ notifications:[{ id:UPDATE_NOTIF_ID, channelId:'updates', title:'Finly update available',
+    body:`Version ${version} is ready. Tap to open Finly and update.`, smallIcon:'ic_stat_finly', extra:{ update:true } }] });
+  localStorage.setItem(key, '1');
+}
+
 export async function cancelAllReminders(){
   if(!isNative) return;
   try{ const p = await LocalNotifications.getPending(); if(p.notifications.length) await LocalNotifications.cancel({ notifications: p.notifications.map(n => ({ id:n.id })) }); }catch{ /* ignore */ }

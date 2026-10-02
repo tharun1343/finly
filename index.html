@@ -238,6 +238,10 @@
               <button class="seg-btn sel" data-size="md" style="font-size:15px">A Medium</button>
               <button class="seg-btn" data-size="lg" style="font-size:17px">A Large</button></div>
           </div>
+          <button class="setting-row" id="boldRow">
+            <div class="setting-left"><img class="e3d set-ic" src="./e3d/1f171.webp" alt="" draggable="false"><div><div class="setting-label">Bold text</div></div></div>
+            <span class="switch" id="boldSwitch" role="switch" aria-checked="false"></span>
+          </button>
           <button class="setting-row" id="themeRow">
             <div class="setting-left"><img class="e3d set-ic" src="./e3d/1f319.webp" alt="" draggable="false"><div><div class="setting-label">Dark mode</div></div></div>
             <span class="switch on" id="themeSwitch" role="switch" aria-checked="true"></span>
@@ -246,8 +250,8 @@
       </div></div>
     </div>
 
-    <div class="acc" data-acc="remind">
-      <div class="acc-head"><button class="acc-toggle" aria-expanded="false"><span class="acc-ic"><img class="e3d" src="./e3d/1f514.webp" alt="" draggable="false"></span><span class="section-title">Reminders</span></button> <button type="button" class="info-i" data-info="Set when to remind per category above, or per entry when you add it. Default: 1 day before. Reminders never come after the due date." aria-label="More info">i</button><svg class="acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></div>
+    <div class="acc static" data-acc="remind">
+      <div class="acc-head"><div class="acc-toggle"><span class="acc-ic"><img class="e3d" src="./e3d/1f514.webp" alt="" draggable="false"></span><span class="section-title">Reminders</span></div> <button type="button" class="info-i" data-info="Set when to remind per category above, or per entry when you add it. Default: 1 day before. Reminders never come after the due date." aria-label="More info">i</button></div>
       <div class="acc-body"><div class="acc-inner">
         <div class="card list">
           <button class="setting-row" id="alertsRow">
@@ -258,8 +262,8 @@
       </div></div>
     </div>
 
-    <div class="acc" data-acc="sync">
-      <div class="acc-head"><button class="acc-toggle" aria-expanded="false"><span class="acc-ic"><img class="e3d" src="./e3d/2601.webp" alt="" draggable="false"></span><span class="section-title">Data &amp; sync</span></button> <button type="button" class="info-i" data-info="Everything is saved on this phone first and backed up to your account whenever you&#39;re online. Green dot = synced, orange = syncing, red = offline." aria-label="More info">i</button><svg class="acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></div>
+    <div class="acc static" data-acc="sync">
+      <div class="acc-head"><div class="acc-toggle"><span class="acc-ic"><img class="e3d" src="./e3d/2601.webp" alt="" draggable="false"></span><span class="section-title">Data &amp; sync</span></div> <button type="button" class="info-i" data-info="Everything is saved on this phone first and backed up to your account whenever you&#39;re online. Green dot = synced, orange = syncing, red = offline." aria-label="More info">i</button></div>
       <div class="acc-body"><div class="acc-inner">
         <div class="card list">
           <div class="setting-row static">
@@ -270,8 +274,8 @@
       </div></div>
     </div>
 
-    <div class="acc" data-acc="about">
-      <div class="acc-head"><button class="acc-toggle" aria-expanded="false"><span class="acc-ic"><img class="e3d" src="./e3d/2139.webp" alt="" draggable="false"></span><span class="section-title">About</span></button><svg class="acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></div>
+    <div class="acc static" data-acc="about">
+      <div class="acc-head"><div class="acc-toggle"><span class="acc-ic"><img class="e3d" src="./e3d/2139.webp" alt="" draggable="false"></span><span class="section-title">About</span></div></div>
       <div class="acc-body"><div class="acc-inner">
         <div id="updateSlot"></div>
         <div class="card list">
@@ -308,48 +312,49 @@
 </div></div>
 
 <div class="sheet-overlay" id="billSheet"><div class="sheet">
-  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="billTitle">Add EMI or bill</div><div class="sheet-sub">Fields marked * are required.</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="billTitle">Add EMI or bill</div><div class="sheet-sub">Fields marked <span class="req">*</span> are required.</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
   <div class="sheet-scroll">
     <div class="form-alert" id="billAlert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><span></span></div>
-    <div class="fgroup" id="bNameG"><label for="bName">Name *</label><input id="bName" maxlength="40" placeholder="e.g. Car Loan, Airtel Broadband" autocomplete="off"><div class="ferr">Give it a name (up to 40 characters).</div></div>
+    <div class="fgroup" id="bNameG"><label for="bName">Name <span class="req">*</span></label><input id="bName" maxlength="40" placeholder="e.g. Car Loan, Airtel Broadband" autocomplete="off"><div class="ferr">Give it a name (up to 40 characters).</div></div>
     <div class="frow">
-      <div class="fgroup"><label for="bCat">Category *</label><select id="bCat"></select></div>
-      <div class="fgroup"><label for="bEvery">Pay every *</label><select id="bEvery"><option value="1">Month</option><option value="3" data-hint="Quarterly">3 months</option><option value="6" data-hint="Half-yearly">6 months</option><option value="12" data-hint="Yearly">Year</option></select></div>
+      <div class="fgroup"><label for="bCat">Category <span class="req">*</span></label><select id="bCat"></select></div>
+      <div class="fgroup"><label for="bEvery">Pay every <span class="req">*</span></label><select id="bEvery"><option value="1">Month</option><option value="3" data-hint="Quarterly">3 months</option><option value="6" data-hint="Half-yearly">6 months</option><option value="12" data-hint="Yearly">Year</option></select></div>
     </div>
-    <div class="fgroup" id="bAmtG"><label for="bAmt" id="bAmtLabel">Amount per payment *</label><div class="money-wrap"><input id="bAmt" type="text" inputmode="decimal" data-money placeholder="5,000" autocomplete="off"></div><div class="ferr">Enter ₹1 – ₹10,00,00,000.</div></div>
+    <div class="fgroup hidden" id="bSubG"><label for="bSub">Type <button type="button" class="info-i" data-info="What kind of EMI or bill this is — it sets the icon. Add or remove types in Profile → Categories." aria-label="More info">i</button></label><select id="bSub"></select></div>
+    <div class="fgroup" id="bAmtG"><label for="bAmt" id="bAmtLabel">Amount per payment <span class="req">*</span></label><div class="money-wrap"><input id="bAmt" type="text" inputmode="decimal" data-money placeholder="5,000" autocomplete="off"></div><div class="ferr">Enter ₹1 – ₹10,00,00,000.</div></div>
     <div class="switch-row" id="bOngoingRow"><div><div class="sr-label">Ongoing — no end date</div><div class="sr-sub">For recharges, insurance and bills that keep repeating</div></div><span class="switch" id="bOngoing" role="switch" aria-checked="false"></span></div>
     <div class="frow" id="bTenureRow">
-      <div class="fgroup" id="bTenG"><label for="bTen" id="bTenLabel">Total payments *</label><input id="bTen" type="text" inputmode="numeric" data-int placeholder="36" autocomplete="off"><div class="ferr" id="bTenErr">Enter 1 – 600.</div></div>
+      <div class="fgroup" id="bTenG"><label for="bTen" id="bTenLabel">Total payments <span class="req">*</span></label><input id="bTen" type="text" inputmode="numeric" data-int placeholder="36" autocomplete="off"><div class="ferr" id="bTenErr">Enter 1 – 600.</div></div>
       <div class="fgroup" id="bPaidG"><label for="bPaidM">Already paid</label><input id="bPaidM" type="text" inputmode="numeric" data-int value="0" autocomplete="off"><div class="ferr" id="bPaidErr">Must be less than the total.</div></div>
     </div>
     <div class="fhint" id="bTenHint" style="margin:-6px 0 14px"></div>
-    <div class="fgroup" id="bDueG"><label for="bDue">Next due date *</label><input id="bDue" type="date"><div class="ferr">Pick the next due date.</div><div class="fhint hidden" id="bDuePast" style="color:var(--warn)">This date has passed — the entry will show as Overdue.</div></div>
+    <div class="fgroup" id="bDueG"><label for="bDue">Next due date <span class="req">*</span></label><input id="bDue" type="date"><div class="ferr">Pick the next due date.</div><div class="fhint hidden" id="bDuePast" style="color:var(--warn)">This date has passed — the entry will show as Overdue.</div></div>
     <div class="fgroup"><label for="bBank">Paid from (e-mandate) <button type="button" class="info-i" data-info="The bank account this EMI is auto-debited from. Add accounts in Profile → Bank accounts." aria-label="More info">i</button></label><select id="bBank"></select></div>
     <div class="fgroup"><span class="flabel">Remind me</span><div id="bRem"></div></div>
     <div class="fgroup" style="margin-bottom:0"><span class="flabel">Documents (up to 3 photos or PDFs)</span><div class="att-list" id="bFiles"></div></div>
   </div>
-  <div class="sheet-foot"><button class="btn btn-danger hidden" id="billDelete">Delete</button><button class="btn btn-primary btn-grow" id="billSave">Save</button></div>
+  <div class="sheet-foot"><button class="btn btn-danger hidden" id="billDelete">Delete</button><button class="btn btn-primary btn-grow" id="billSave">Add EMI</button></div>
 </div></div>
 
 <div class="sheet-overlay" id="chitSheet"><div class="sheet">
-  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="chitTitle">Add chit fund</div><div class="sheet-sub">Fields marked * are required.</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="chitTitle">Add chit fund</div><div class="sheet-sub">Fields marked <span class="req">*</span> are required.</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
   <div class="sheet-scroll">
     <div class="form-alert" id="chitAlert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><span></span></div>
     <div class="lock-note hidden" id="chitLock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Chit value, people, amount, schedule and start date are locked once rounds are recorded. Delete and re-add the chit if those were entered wrong.</span></div>
     <div class="frow">
-      <div class="fgroup" id="cNameG"><label for="cName">Chit name *</label><input id="cName" maxlength="40" placeholder="e.g. Group A" autocomplete="off"><div class="ferr">Give it a name.</div></div>
+      <div class="fgroup" id="cNameG"><label for="cName">Chit name <span class="req">*</span></label><input id="cName" maxlength="40" placeholder="e.g. Group A" autocomplete="off"><div class="ferr">Give it a name.</div></div>
       <div class="fgroup"><label for="cAgent">Agent name</label><input id="cAgent" maxlength="40" placeholder="Optional" autocomplete="off"></div>
     </div>
     <div class="frow">
-      <div class="fgroup" id="cPotG"><label for="cPot">Total chit value *</label><div class="money-wrap"><input id="cPot" type="text" inputmode="decimal" data-money placeholder="1,00,000" autocomplete="off"></div><div class="ferr">Enter the full pot amount.</div></div>
-      <div class="fgroup" id="cMemG"><label for="cMem">No. of people *</label><input id="cMem" type="text" inputmode="numeric" data-int placeholder="10" autocomplete="off"><div class="ferr">2 – 100 people, agent included.</div></div>
+      <div class="fgroup" id="cPotG"><label for="cPot">Total chit value <span class="req">*</span></label><div class="money-wrap"><input id="cPot" type="text" inputmode="decimal" data-money placeholder="1,00,000" autocomplete="off"></div><div class="ferr">Enter the full pot amount.</div></div>
+      <div class="fgroup" id="cMemG"><label for="cMem">No. of people <span class="req">*</span></label><input id="cMem" type="text" inputmode="numeric" data-int placeholder="10" autocomplete="off"><div class="ferr">2 – 100 people, agent included.</div></div>
     </div>
     <div class="frow">
-      <div class="fgroup" id="cInstG"><label for="cInst">Amount per person * <button type="button" class="info-i" data-info="Auto-filled as chit value ÷ no. of people. Change it if your chit is different." aria-label="More info">i</button></label><div class="money-wrap"><input id="cInst" type="text" inputmode="decimal" data-money placeholder="Auto" autocomplete="off"></div><div class="ferr">Enter the per-round amount.</div></div>
-      <div class="fgroup"><label for="cInt">Auction held every *</label><select id="cInt"><option value="1">Every month</option><option value="2">Every 2 months</option><option value="3">Every 3 months</option><option value="4">Every 4 months</option><option value="6">Every 6 months</option><option value="12">Every 12 months</option></select></div>
+      <div class="fgroup" id="cInstG"><label for="cInst">Amount per person <span class="req">*</span> <button type="button" class="info-i" data-info="Auto-filled as chit value ÷ no. of people. Change it if your chit is different." aria-label="More info">i</button></label><div class="money-wrap"><input id="cInst" type="text" inputmode="decimal" data-money placeholder="Auto" autocomplete="off"></div><div class="ferr">Enter the per-round amount.</div></div>
+      <div class="fgroup"><label for="cInt">Auction held every <span class="req">*</span></label><select id="cInt"><option value="1">Every month</option><option value="2">Every 2 months</option><option value="3">Every 3 months</option><option value="4">Every 4 months</option><option value="6">Every 6 months</option><option value="12">Every 12 months</option></select></div>
     </div>
     <div class="frow">
-      <div class="fgroup" id="cStartG"><label for="cStart">Start date (round 1) *</label><input id="cStart" type="date"><div class="ferr">Pick the first round's date.</div></div>
+      <div class="fgroup" id="cStartG"><label for="cStart">Start date (round 1) <span class="req">*</span></label><input id="cStart" type="date"><div class="ferr">Pick the first round's date.</div></div>
       <div class="fgroup" id="cAgCommG"><label for="cAgComm">Agent's cut <button type="button" class="info-i" data-info="Kept by the agent from each winning bid before the rest is shared as commission. Leave 0 if none." aria-label="More info">i</button></label><div class="money-wrap"><input id="cAgComm" type="text" inputmode="decimal" data-money placeholder="0" autocomplete="off"></div><div class="ferr">Must be less than the chit value.</div></div>
     </div>
     <div class="switch-row" id="cAgentFirstRow"><div><div class="sr-label">Agent takes round 1</div><div class="sr-sub">No auction in round 1 — everyone pays in full</div></div><span class="switch on" id="cAgentFirst" role="switch" aria-checked="true"></span></div>
@@ -369,7 +374,7 @@
     <div class="fgroup"><span class="flabel">Remind me before each round</span><div id="cRem"></div></div>
     <div class="fgroup" style="margin-bottom:0"><span class="flabel">Documents (up to 3 photos or PDFs)</span><div class="att-list" id="cFiles"></div></div>
   </div>
-  <div class="sheet-foot"><button class="btn btn-danger hidden" id="chitDelete">Delete</button><button class="btn btn-primary btn-grow" id="chitSave">Save</button></div>
+  <div class="sheet-foot"><button class="btn btn-danger hidden" id="chitDelete">Delete</button><button class="btn btn-primary btn-grow" id="chitSave">Add chit fund</button></div>
 </div></div>
 
 <div class="sheet-overlay" id="roundSheet"><div class="sheet">
@@ -386,11 +391,15 @@
   <div class="sheet-scroll">
     <div class="form-alert" id="catAlert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><span></span></div>
     <div class="emoji-preview"><div class="glyph" id="catPrevGlyph"></div><div><div class="ep-name" id="catPrevName">Category name</div><div class="ep-sub" id="catPrevSub">No icon picked — the first letter is used</div></div></div>
-    <div class="fgroup" id="catNameG"><label for="catName">Name *</label><input id="catName" maxlength="24" placeholder="e.g. Subscriptions" autocomplete="off"><div class="ferr" id="catNameErr">Name is required.</div></div>
+    <div class="fgroup" id="catNameG"><label for="catName">Name <span class="req">*</span></label><input id="catName" maxlength="24" placeholder="e.g. Subscriptions" autocomplete="off"><div class="ferr" id="catNameErr">Name is required.</div></div>
     <div class="fgroup"><span class="flabel">Icon (optional) — tap again to clear</span><div class="emoji-grid" id="emojiGrid"></div></div>
+    <div class="fgroup" id="catSubsG"><span class="flabel">Types <button type="button" class="info-i" data-info="Types sit inside this category — for EMI that's car, bike, home loan and so on. Each type has its own icon on your cards." aria-label="More info">i</button></span>
+      <div class="sub-list" id="catSubs"></div>
+      <div class="sub-add"><div class="sub-ic"><select id="catSubIcon" data-grid="true" aria-label="Icon for the new type"></select></div><input id="catSubName" maxlength="24" placeholder="New type, e.g. Tractor loan" autocomplete="off"><button type="button" class="btn btn-secondary" id="catSubAdd">Add</button></div>
+      <div class="ferr" id="catSubErr"></div></div>
     <div class="fgroup" style="margin-bottom:0"><span class="flabel">Default reminders for this category</span><div id="catRem"></div></div>
   </div>
-  <div class="sheet-foot"><button class="btn btn-danger hidden" id="catDelete">Delete</button><button class="btn btn-primary btn-grow" id="catSave">Save</button></div>
+  <div class="sheet-foot"><button class="btn btn-danger hidden" id="catDelete">Delete</button><button class="btn btn-primary btn-grow" id="catSave">Add category</button></div>
 </div></div>
 
 <div class="sheet-overlay" id="profileSheet"><div class="sheet">
@@ -410,7 +419,7 @@
     <div class="fhint pin-hint" id="pfPinHint"></div>
     <div class="fgroup" id="pfIncomeG" style="margin-bottom:0"><label for="pfIncomeIn">Monthly income <button type="button" class="info-i" data-info="Used to show what&#39;s left after your commitments. Leave empty if you&#39;d rather not track it." aria-label="More info">i</button></label><div class="money-wrap"><input id="pfIncomeIn" type="text" inputmode="decimal" data-money placeholder="Not set" autocomplete="off"></div><div class="ferr">Enter an amount up to ₹10,00,00,000.</div></div>
   </div>
-  <div class="sheet-foot"><button class="btn btn-primary btn-grow" id="pfSave">Save</button></div>
+  <div class="sheet-foot"><button class="btn btn-primary btn-grow" id="pfSave">Update profile</button></div>
 </div></div>
 
 <div class="sheet-overlay" id="avatarSheet"><div class="sheet">
@@ -494,13 +503,13 @@
   <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="bkTitle">Add bank account</div><div class="sheet-sub">Saved privately to your account.</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
   <div class="sheet-scroll">
     <div class="form-alert" id="bkAlert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><span></span></div>
-    <div class="fgroup" id="bkBankG"><label for="bkBank">Bank *</label><select id="bkBank" data-search="true"></select><div class="ferr">Choose your bank.</div></div>
-    <div class="fgroup hidden" id="bkOtherG"><label for="bkOther">Bank name *</label><input id="bkOther" maxlength="60" placeholder="e.g. Madurai District Central Co-op Bank" autocomplete="off"><div class="ferr">Type the bank's name.</div></div>
+    <div class="fgroup" id="bkBankG"><label for="bkBank">Bank <span class="req">*</span></label><select id="bkBank" data-search="true"></select><div class="ferr">Choose your bank.</div></div>
+    <div class="fgroup hidden" id="bkOtherG"><label for="bkOther">Bank name <span class="req">*</span></label><input id="bkOther" maxlength="60" placeholder="e.g. Madurai District Central Co-op Bank" autocomplete="off"><div class="ferr">Type the bank's name.</div></div>
     <div class="fgroup" id="bkHolderG"><label for="bkHolder">Account holder name</label><input id="bkHolder" maxlength="60" placeholder="Optional" autocomplete="off"></div>
-    <div class="fgroup" id="bkAcctG"><label for="bkAcct">Account number *</label><input id="bkAcct" type="text" inputmode="numeric" maxlength="18" placeholder="9 – 18 digits" autocomplete="off"><div class="ferr" id="bkAcctErr">Enter 9 – 18 digits.</div></div>
-    <div class="fgroup" id="bkIfscG" style="margin-bottom:0"><label for="bkIfsc">IFSC * <button type="button" class="info-i" data-info="Type the 11-character IFSC — the bank and branch are filled in automatically when you&#39;re online." aria-label="More info">i</button></label><input id="bkIfsc" maxlength="11" placeholder="e.g. SBIN0001234" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase;letter-spacing:1px"><div class="ferr" id="bkIfscErr">IFSC is 11 characters: 4 letters, 0, then 6 letters or digits.</div><div class="fhint" id="bkIfscHint">Printed on your cheque book or passbook.</div><div class="lookup-card hidden" id="bkBranch"></div></div>
+    <div class="fgroup" id="bkAcctG"><label for="bkAcct">Account number <span class="req">*</span></label><input id="bkAcct" type="text" inputmode="numeric" maxlength="18" placeholder="9 – 18 digits" autocomplete="off"><div class="ferr" id="bkAcctErr">Enter 9 – 18 digits.</div></div>
+    <div class="fgroup" id="bkIfscG" style="margin-bottom:0"><label for="bkIfsc">IFSC <span class="req">*</span> <button type="button" class="info-i" data-info="Type the 11-character IFSC — the bank and branch are filled in automatically when you&#39;re online." aria-label="More info">i</button></label><input id="bkIfsc" maxlength="11" placeholder="e.g. SBIN0001234" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase;letter-spacing:1px"><div class="ferr" id="bkIfscErr">IFSC is 11 characters: 4 letters, 0, then 6 letters or digits.</div><div class="fhint" id="bkIfscHint">Printed on your cheque book or passbook.</div><div class="lookup-card hidden" id="bkBranch"></div></div>
   </div>
-  <div class="sheet-foot"><button class="btn btn-danger hidden" id="bkDelete">Delete</button><button class="btn btn-primary btn-grow" id="bkSave">Save</button></div>
+  <div class="sheet-foot"><button class="btn btn-danger hidden" id="bkDelete">Delete</button><button class="btn btn-primary btn-grow" id="bkSave">Add bank account</button></div>
 </div></div>
 
 <div class="sheet-overlay" id="confirmSheet"><div class="sheet">

@@ -1,7 +1,7 @@
 import './styles.css';
 import { $ } from './util.js';
 import { supabase, storedUser, loadStore, store, commitState, runSync, clearStore, signOut, setOnline } from './data.js';
-import { initToasts, initSheets, initNumeric, initInfo, toast, closeAllSheets } from './ui.js';
+import { initToasts, initSheets, initNumeric, initInfo, initDateFields, toast, closeAllSheets } from './ui.js';
 import { initAuth, showAuth, showOnboarding, authBack, prefillSignin } from './auth.js';
 import { startApp, applySettings, handleBack, openItemFromNotification, onResumeApp, swatchesHTML } from './app.js';
 import { isNative, watchNetwork, onResume, onBack, onNotificationTap, requestNotifyPermission, cancelAllReminders } from './native.js';
@@ -63,7 +63,7 @@ async function logout(sessionExpired){
 }
 
 function boot(){
-  initToasts(); initSheets(); initNumeric(); initInfo();
+  initToasts(); initSheets(); initNumeric(); initInfo(); initDateFields();
   if(!supabase){
     $('#boot').innerHTML = '<p style="max-width:280px;text-align:center;color:var(--text-dim);line-height:1.6">This build is missing its server settings. Please install the latest version of Finly.</p>';
     return;

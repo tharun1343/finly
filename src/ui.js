@@ -179,19 +179,25 @@ export function enhanceSelect(sel){
   btn.innerHTML = `<span class="dd-value"></span>${ICON.chevron}`;
   const lbl = sel.id && $(`label[for="${sel.id}"]`); if(lbl){ btn.id = sel.id + '_dd'; lbl.htmlFor = btn.id; }
   sel.after(btn);
-  const sync = () => { const o = sel.options[sel.selectedIndex]; btn.querySelector('.dd-value').textContent = o ? o.textContent : ''; btn.disabled = sel.disabled; };
+  const sync = () => {
+    const o = sel.options[sel.selectedIndex], ic = o && sel._ddIcon ? sel._ddIcon(o) : '';
+    btn.querySelector('.dd-value').innerHTML = (ic ? `<span class="dd-ic">${ic}</span>` : '') + esc(o ? o.textContent : '');
+    btn.classList.toggle('has-ic', !!ic); btn.disabled = sel.disabled;
+  };
   sel._dd = { btn, sync }; sync();
   btn.addEventListener('click', () => ddOpen && ddOpen.sel === sel ? closeDropdown() : openDropdown(sel));
   btn.addEventListener('keydown', e => { if(['ArrowDown','ArrowUp','Enter',' '].includes(e.key)){ e.preventDefault(); openDropdown(sel); } });
   sel.addEventListener('change', sync);
 }
 export function setSelect(id, v){ const s = $('#' + id); s.value = v; s._dd && s._dd.sync(); }
+/** Show an icon (HTML from fn(option)) next to each option and in the closed dropdown. */
+export function setSelectIcons(id, fn){ const s = $('#' + id); s._ddIcon = fn; s._dd && s._dd.sync(); }
 function openDropdown(sel){
   closeDropdown();
   const btn = sel._dd.btn, searchable = sel.dataset.search === 'true';
-  const menu = document.createElement('div'); menu.className = 'dd-menu' + (searchable ? ' searchable' : ''); menu.setAttribute('role', 'listbox');
+  const menu = document.createElement('div'); menu.className = 'dd-menu' + (searchable ? ' searchable' : '') + (sel.dataset.grid ? ' grid' : ''); menu.setAttribute('role', 'listbox');
   let i = 0, html = '';
-  const opt = o => { const k = i++; return `<button type="button" role="option" class="dd-opt ${k === sel.selectedIndex ? 'sel' : ''}" data-i="${k}" data-q="${esc(o.textContent.toLowerCase())}" aria-selected="${k === sel.selectedIndex}" style="--i:${Math.min(k, 12)}"><span class="dd-l">${esc(o.textContent)}${o.dataset.hint ? `<small>${esc(o.dataset.hint)}</small>` : ''}</span><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6 9 17l-5-5"/></svg></button>`; };
+  const opt = o => { const k = i++, ic = sel._ddIcon ? sel._ddIcon(o) : ''; return `<button type="button" role="option" class="dd-opt ${k === sel.selectedIndex ? 'sel' : ''}" data-i="${k}" data-q="${esc(o.textContent.toLowerCase())}" aria-selected="${k === sel.selectedIndex}" style="--i:${Math.min(k, 12)}">${ic ? `<span class="dd-ic">${ic}</span>` : ''}<span class="dd-l">${esc(o.textContent)}${o.dataset.hint ? `<small>${esc(o.dataset.hint)}</small>` : ''}</span><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6 9 17l-5-5"/></svg></button>`; };
   for(const ch of sel.children){
     if(ch.tagName === 'OPTGROUP') html += `<div class="dd-group" data-group>${esc(ch.label)}</div>` + Array.from(ch.children).map(opt).join('');
     else html += opt(ch);
@@ -200,7 +206,7 @@ function openDropdown(sel){
   document.body.appendChild(menu);
   const place = () => {
     const r = btn.getBoundingClientRect(), vh = window.visualViewport?.height || innerHeight;
-    const w = Math.max(r.width, 220), below = vh - r.bottom - 12, above = r.top - 12;
+    const w = Math.max(r.width, sel.dataset.grid ? 270 : 220), below = vh - r.bottom - 12, above = r.top - 12;
     const up = below < 240 && above > below;
     const h = Math.min(searchable ? 380 : 300, up ? above : below);
     menu.style.width = w + 'px'; menu.style.maxHeight = h + 'px';
@@ -213,7 +219,7 @@ function openDropdown(sel){
   requestAnimationFrame(() => menu.classList.add('show'));
   const opts = () => $$('.dd-opt:not(.hidden)', menu);
   const selected = $(`.dd-opt[data-i="${sel.selectedIndex}"]`, menu);
-  if(selected) selected.scrollIntoView({ block:'center' });
+  if(selected) menu.scrollTop = Math.max(0, selected.offsetTop - menu.clientHeight / 2 + selected.offsetHeight / 2);
   if(!matchMedia('(pointer: coarse)').matches) (searchable ? $('.dd-search input', menu) : (selected || opts()[0]))?.focus({ preventScroll:true });
   if(searchable){
     const inp = $('.dd-search input', menu);
@@ -292,4 +298,31 @@ export function flip(container, mutate){
     const l = el.getBoundingClientRect(), dx = f.left - l.left, dy = f.top - l.top;
     if(dx || dy) el.animate([{ transform:`translate(${dx}px,${dy}px)` }, { transform:'none' }], { duration:460, easing:'cubic-bezier(.2,.9,.2,1)' });
   });
+}
+
+/* ---------------- date fields: show 10-Aug-2026 instead of the device's number format ---------------- */
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'], WD = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+export const fmtFieldDate = iso => { const [y, m, d] = String(iso).split('-').map(Number); if(!y || !m || !d) return ''; const dt = new Date(y, m - 1, d); return { main:`${String(d).padStart(2, '0')}-${MON[m - 1]}-${y}`, wd: WD[dt.getDay()] }; };
+const valueDesc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+function enhanceDate(input){
+  if(input._date) return; input._date = true;
+  const wrap = document.createElement('div'); wrap.className = 'date-wrap';
+  input.before(wrap); wrap.appendChild(input);
+  const show = document.createElement('span'); show.className = 'date-show'; show.setAttribute('aria-hidden', 'true');
+  wrap.appendChild(show);
+  const draw = () => {
+    const f = fmtFieldDate(valueDesc.get.call(input));
+    show.innerHTML = f ? `${f.main}<small>${f.wd}</small>` : `<span class="ph">${esc(input.dataset.placeholder || 'Pick a date')}</span>`;
+    wrap.classList.toggle('empty', !f);
+  };
+  // also catch dates set from code (input.value = ...)
+  Object.defineProperty(input, 'value', { configurable:true, get(){ return valueDesc.get.call(this); }, set(v){ valueDesc.set.call(this, v); draw(); } });
+  input.addEventListener('input', draw);
+  input.addEventListener('change', () => { draw(); if(matchMedia('(pointer: coarse)').matches) input.blur(); });
+  draw();
+}
+export function initDateFields(){
+  $$('input[type=date]').forEach(enhanceDate);
+  new MutationObserver(muts => { for(const m of muts) for(const n of m.addedNodes) if(n.nodeType === 1){ if(n.matches('input[type=date]')) enhanceDate(n); else n.querySelectorAll?.('input[type=date]').forEach(enhanceDate); } })
+    .observe(document.body, { childList:true, subtree:true });
 }

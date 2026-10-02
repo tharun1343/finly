@@ -52,12 +52,22 @@ export async function signOut(){
 
 /* ---------------- local store ---------------- */
 export const DEFAULT_SETTINGS = { name:'', income:null, theme:'dark', text:'md', alertsOn:true, palette:'sapphire', onboarded:false, banks:[],
-  company:'', dob:'', pin:'', city:'', state:'', avatar:null };
+  company:'', dob:'', pin:'', city:'', state:'', avatar:null, bold:false };
+const sub = (id, name, emoji) => ({ id, name, emoji });
+/** Default types for the built-in bill categories. */
+export const DEFAULT_SUBS = {
+  emi:[sub('car','Car loan','🚗'), sub('bike','Bike loan','🏍️'), sub('home','Home loan','🏡'), sub('personal','Personal loan','💵'), sub('bank','Bank loan','🏦'),
+    sub('app','Finance app','📲'), sub('card','Credit card EMI','💳'), sub('gadget','Phone & gadgets','💻'), sub('appliance','Home appliances','📺'),
+    sub('education','Education loan','🎓'), sub('business','Business loan','🏪')],
+  recharge:[sub('mobile','Mobile','📱'), sub('broadband','Broadband','🌐'), sub('dth','DTH / Cable','📡'), sub('ott','OTT & subscriptions','🎬')],
+  household:[sub('rent','Rent','🏠'), sub('electricity','Electricity','💡'), sub('water','Water','💧'), sub('gas','Gas cylinder','🔥'),
+    sub('help','House help','🧹'), sub('groceries','Groceries','🛒'), sub('school','School fees','🏫'), sub('insurance','Insurance','🛡️')]
+};
 const defaultCats = () => [
-  { id:'emi', name:'EMI', emoji:'🏦', kind:'bill', ci:0, reminders:[1], _u:0 },
+  { id:'emi', name:'EMI', emoji:'🏦', kind:'bill', ci:0, reminders:[1], subs:clone(DEFAULT_SUBS.emi), _u:0 },
   { id:'chit', name:'Chit Fund', emoji:'🤝', kind:'chit', ci:1, reminders:[1], builtin:true, _u:0 },
-  { id:'household', name:'Household', emoji:'🏠', kind:'bill', ci:2, reminders:[1], optional:true, _u:0 },
-  { id:'recharge', name:'Recharges', emoji:'📶', kind:'bill', ci:3, reminders:[1], _u:0 },
+  { id:'household', name:'Household', emoji:'🏠', kind:'bill', ci:2, reminders:[1], optional:true, subs:clone(DEFAULT_SUBS.household), _u:0 },
+  { id:'recharge', name:'Recharges', emoji:'📶', kind:'bill', ci:3, reminders:[1], subs:clone(DEFAULT_SUBS.recharge), _u:0 },
   GOLD_LOAN()];
 const GOLD_LOAN = () => ({ id:'goldloan', name:'Gold Loan', emoji:'🪙', kind:'bill', ci:4, reminders:[1], _u:0 });
 
@@ -76,6 +86,14 @@ export function loadStore(id){
   if(!store.meta.migrations.includes('goldloan')){
     if(!store.state.cats.some(c => c.id === 'goldloan')) store.state.cats.push(GOLD_LOAN());
     store.meta.migrations.push('goldloan');
+    saveStore();
+  }
+  if(!store.meta.migrations.includes('subs1')){
+    const now = Date.now();
+    for(const c of store.state.cats){
+      if(DEFAULT_SUBS[c.id] && !c.subs){ c.subs = clone(DEFAULT_SUBS[c.id]); if(saved){ c._u = now; mark('cats', c.id, false, now); } }
+    }
+    store.meta.migrations.push('subs1');
     saveStore();
   }
 }

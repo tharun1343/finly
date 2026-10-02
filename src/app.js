@@ -3,8 +3,8 @@ import { PALETTES, TOKEN_MAP, paletteVars, swatchStyle } from './palettes.js';
 import { store, commitState, replaceState, onSyncStatus, syncStatus, scheduleSync, runSync, onRemoteChanges, pendingCount, queueFileDelete, clearFileDelete, dueFileDeletes, onAfterSync } from './data.js';
 import { MAX_FILES, prepareFile, putLocal, thumbUrl, openAttachment, openBlob, syncFiles, FileError } from './files.js';
 import { toast, layoutFab, openSheet, closeSheet, confirmBox, setInvalid, showAlert, clearForm, scrollToError, setBusy, bindSwitch, setSwitch, isOn,
-  moveThumb, bindSeg, moveAllThumbs, setNum, bindNumeric, enhanceSelect, setSelect, makeReminderPicker, remSummary, withTransition, flip, handleBackInOverlays, footShadow, fmtNumInput } from './ui.js';
-import { isNative, APP_VERSION, APK_URL, setBarsStyle, scheduleReminders, notifyPermission, requestNotifyPermission, saveFile, checkForUpdate, openExternal } from './native.js';
+  moveThumb, bindSeg, moveAllThumbs, setNum, bindNumeric, enhanceSelect, setSelect, setSelectIcons, makeReminderPicker, remSummary, withTransition, flip, handleBackInOverlays, footShadow, fmtNumInput } from './ui.js';
+import { isNative, APP_VERSION, APK_URL, setBarsStyle, scheduleReminders, notifyPermission, requestNotifyPermission, saveFile, checkForUpdate, openExternal, notifyUpdate, prepareUpdateChannel } from './native.js';
 import { paymentRows, summaryRow, buildCsv, buildPdf } from './export.js';
 import { BANK_GROUPS, OTHER_BANK, findBank, bankFromIfsc, shortName, IFSC_RE, maskAcct, bankBadgeHTML, bankColor, lookupIfsc } from './banks.js';
 import { PIN_RE, lookupPin, ageFrom } from './places.js';
@@ -35,7 +35,10 @@ const alertWindow = it => Math.max(7, ...effReminders(it));
 const paidRecently = it => it.kind === 'bill' && !!it.lastPaid && diffDays(T, it.due) > alertWindow(it);
 const itemPaid = it => it.kind === 'chit' ? it.paidIn : it.paid;
 const itemRemaining = it => it.status !== 'active' ? 0 : it.kind === 'chit' ? (it.taken ? it.installment * (it.members - it.roundsDone) : 0) : (it.ongoing ? 0 : it.amount * it.tenureLeft);
-const catColor = c => { const cs = (PALETTES[st().settings.palette] || PALETTES.sapphire).cats; return cs[((c?.ci ?? 0) % cs.length + cs.length) % cs.length]; };
+const catColor = c => { const cs = (PALETTES[st().settings.palette] || PALETTES.sapphire).cats, col = cs[((c?.ci ?? 0) % cs.length + cs.length) % cs.length];
+  return st().settings.theme === 'light' ? `color-mix(in srgb, ${col} 68%, #1d2233)` : col; };
+const subOf = it => it?.subId ? (cat(it.catId)?.subs || []).find(x => x.id === it.subId) : null;
+const catLabel = it => { const c = cat(it.catId), sb = subOf(it); return [c?.name, sb?.name].filter(Boolean).join(' · '); };
 const displayName = () => st().settings.name || user.name || (user.email || '').split('@')[0] || 'there';
 
 function histDesc(h, mf, rich){
@@ -45,7 +48,7 @@ function histDesc(h, mf, rich){
     : h.type === 'taken' ? `${b('Took the pot')} — bid ${mf(h.bid)}, received ${mf(h.received)}`
     : h.type === 'last' ? b('Final round — pot came to you') : h.type === 'opening' ? `Opening balance for rounds 1–${h.round}` : 'Paid in full';
 }
-const exportHelpers = { cat, itemPaid, itemRemaining, nextDue, histDesc };
+const exportHelpers = { cat, catLabel, itemPaid, itemRemaining, nextDue, histDesc };
 
 function computeAlerts(){
   if(!st().settings.alertsOn) return [];
@@ -103,7 +106,7 @@ let filter = 'all', sortMode = 'due', page = 'home', byView = 'active';
 const HAS3D = new Set(Object.keys(E3D).map(e3dCode));
 /** A bundled 3D image for the emoji when we have one, else the plain emoji. */
 const e3d = (emoji, cls = '') => emoji && HAS3D.has(e3dCode(emoji)) ? `<img class="e3d ${cls}" src="./e3d/${e3dCode(emoji)}.webp" alt="" draggable="false">` : esc(emoji || '');
-function glyphHTML(c){ return c && c.emoji ? e3d(c.emoji) : `<span class="glyph-letter">${esc((c?.name || '?').charAt(0).toUpperCase())}</span>`; }
+function glyphHTML(c, it){ const sb = subOf(it); if(sb?.emoji) return e3d(sb.emoji); return c && c.emoji ? e3d(c.emoji) : `<span class="glyph-letter">${esc((c?.name || '?').charAt(0).toUpperCase())}</span>`; }
 function countTo(el, key, to){
   const from = lastNum[key] ?? 0; lastNum[key] = to;
   if(from === to || document.hidden || reduceMotion()){ el.textContent = fmtMoney(to); return; }
@@ -140,7 +143,7 @@ function billCard(it, i){
     : `<div class="fig"><span class="fig-label">Paid</span><span class="fig-value">${fmtMoney(it.paid)}</span></div><div class="fig"><span class="fig-label">Left</span><span class="fig-value">${fmtMoney(it.amount * it.tenureLeft)}</span></div>`;
   const recent = paidRecently(it);
   return `<article class="item-card ${enterCls(it.id)}" data-id="${it.id}" style="--accent:${catColor(c)};--i:${i}">
-    <div class="ic-top"><div class="ic-id"><div class="glyph">${glyphHTML(c)}</div><div style="min-width:0"><div class="ic-name">${esc(it.name)}</div>
+    <div class="ic-top"><div class="ic-id"><div class="glyph">${glyphHTML(c, it)}</div><div style="min-width:0"><div class="ic-name">${esc(it.name)}</div>
       <div class="ic-meta"><span class="badge ${st_.cls}">${st_.label}</span><span class="due-text ${st_.urgent ? 'urgent' : ''}">${st_.text}</span>${bankTagHTML(it)}${clipHTML(it)}</div></div></div>
       <div class="ic-amt"><div class="amt">${fmtMoney(it.amount)}</div><div class="per">/ ${perLabel(ev(it))}</div></div></div>
     ${middle}
@@ -235,7 +238,7 @@ function renderStats(){
     const sub = it.status === 'closed' ? `Closed ${fmtDate(it.closedOn)} · ${fmtMoney(paid)} paid`
       : it.kind === 'chit' ? `${fmtMoney(paid)} in · ${it.taken ? fmtMoney(rem) + ' owed' : '+' + fmtMoney(it.commission) + ' commission'}`
       : it.ongoing ? `${fmtMoney(paid)} paid · ongoing` : `${fmtMoney(paid)} paid · ${fmtMoney(rem)} left`;
-    return `<div class="by-row" style="--accent:${catColor(c)};--i:${i}"><div class="glyph">${glyphHTML(c)}</div><div style="min-width:0"><div class="by-name">${esc(it.name)}</div><div class="by-sub">${sub}</div>${it.ongoing ? '' : barHTML('by_' + it.id, pct, catColor(c))}</div>
+    return `<div class="by-row" style="--accent:${catColor(c)};--i:${i}"><div class="glyph">${glyphHTML(c, it)}</div><div style="min-width:0"><div class="by-name">${esc(it.name)}</div><div class="by-sub">${sub}</div>${it.ongoing ? '' : barHTML('by_' + it.id, pct, catColor(c))}</div>
       <button class="mini-btn" data-export="${it.id}" aria-label="Export ${esc(it.name)}">${ICON.download}</button></div>`; }).join('')
     : `<div class="empty" style="padding:20px">${byView === 'active' ? 'No active commitments.' : 'Finished EMIs and chits show up here.'}</div>`;
   const ds = t.debt + t.savings, dp = ds ? Math.round(t.debt / ds * 100) : 0;
@@ -300,7 +303,7 @@ function renderWallet(){
   $('#closedCount').textContent = cl.length ? `(${cl.length})` : '';
   $('#closedList').innerHTML = cl.length ? cl.map(it => { const c = cat(it.catId);
     const sub = it.kind === 'chit' ? `${it.members} rounds${it.taken ? ' · received ' + fmtMoney(it.taken.received) : ''}` : `${it.tenureTotal} months`;
-    return `<div class="closed-row" style="--accent:${catColor(c)}"><div class="glyph">${glyphHTML(c)}</div><div style="min-width:0"><div class="cr-name">${esc(it.name)}</div><div class="cr-sub">Closed ${fmtDate(it.closedOn)} · ${sub}</div></div><div class="cr-amt"><span>Paid</span>${fmtMoney(itemPaid(it))}</div>
+    return `<div class="closed-row" style="--accent:${catColor(c)}"><div class="glyph">${glyphHTML(c, it)}</div><div style="min-width:0"><div class="cr-name">${esc(it.name)}</div><div class="cr-sub">Closed ${fmtDate(it.closedOn)} · ${sub}</div></div><div class="cr-amt"><span>Paid</span>${fmtMoney(itemPaid(it))}</div>
       <button class="mini-btn" data-export="${it.id}" aria-label="Export ${esc(it.name)}">${ICON.download}</button></div>`; }).join('')
     : '<div class="empty" style="padding:22px">Completed EMIs and chits move here automatically.</div>';
 }
@@ -350,6 +353,7 @@ export function applySettings(){
   $('meta[name="theme-color"]')?.setAttribute('content', v.bg);
   setBarsStyle(s.theme);
   setSwitch('themeSwitch', s.theme === 'dark');
+  root.dataset.bold = s.bold ? '1' : '0'; setSwitch('boldSwitch', !!s.bold);
   setSwitch('alertsSwitch', s.alertsOn);
   $$('#textSizeSeg .seg-btn').forEach(b => b.classList.toggle('sel', b.dataset.size === s.text));
   requestAnimationFrame(() => { moveAllThumbs(); moveNavInd(); });
@@ -407,8 +411,10 @@ function onCardAction(e){
    EMI / BILL
 ================================================================ */
 function payBill(it){
-  if(paidRecently(it)) return confirmBox({ title:'Already paid this cycle', body:`You paid ${it.name} on ${fmtDate(it.lastPaid)}. Pay the ${fmtDate(it.due)} installment early?`, yes:'Pay early', danger:false, onYes:() => doPay(it.id) });
-  doPay(it.id);
+  if(paidRecently(it)) return confirmBox({ title:'Already paid this cycle', body:`You paid ${it.name} on ${fmtDate(it.lastPaid)}. Pay the ${fmtDate(it.due)} installment early?`, yes:'Yes, pay early', danger:false, onYes:() => doPay(it.id) });
+  const last = !it.ongoing && it.tenureLeft === 1;
+  confirmBox({ title:`Has ${it.name} been paid?`, body:`${fmtMoney(it.amount)} due ${fmtDate(it.due)}${it.bankId && bankById(it.bankId) ? ' · from ' + bankLabel(bankById(it.bankId)) : ''}.${last ? ' This is the last payment — it will move to Closed.' : ''}`,
+    yes:'Yes, it\'s paid', danger:false, onYes:() => doPay(it.id) });
 }
 async function doPay(id){
   const it = findItem(id), closing = !it.ongoing && it.tenureLeft === 1, name = it.name, amt = it.amount;
@@ -483,12 +489,27 @@ function openFilesSheet(it){
 }
 const queueItemFiles = it => (it.files || []).forEach(a => a.path && queueFileDelete(a.path));
 
-let editingBill = null, billRemTouched = false, billRem;
+let editingBill = null, billRemTouched = false, billRem, subTouched = false;
+function fillSubSelect(selected){
+  const c = cat($('#bCat').value), subs = c?.subs || [];
+  $('#bSub').innerHTML = `<option value="">${subs.length ? 'Not set' : 'No types'}</option>` + subs.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
+  setSelect('bSub', selected && subs.some(x => x.id === selected) ? selected : '');
+  $('#bSubG').classList.toggle('hidden', !subs.length);
+  const noun = !c || c.id === 'emi' ? 'EMI' : c.id === 'household' ? 'household bill' : c.name.toLowerCase().replace(/s$/, '');
+  $('#billSave').textContent = (editingBill ? 'Update ' : 'Add ') + noun;
+}
+/** Picks a type from words in the name ("Car loan" → Car loan) until the user chooses one. */
+function guessSub(){
+  if(subTouched) return;
+  const name = $('#bName').value.toLowerCase(), subs = cat($('#bCat').value)?.subs || [];
+  const hit = subs.find(x => { const w = x.name.toLowerCase().split(/[^a-z]+/)[0]; return w.length > 2 && new RegExp(`\\b${w}`).test(name); });
+  if(hit && $('#bSub').value !== hit.id) setSelect('bSub', hit.id);
+}
 const billCats = () => st().cats.filter(c => c.kind === 'bill');
 function syncBillForm(){
   const ongoing = isOn('bOngoing'), every = num($('#bEvery').value) || 1;
   $('#bTenureRow').classList.toggle('hidden', ongoing);
-  $('#bTenLabel').textContent = every === 1 ? 'Total months *' : 'Total payments *';
+  $('#bTenLabel').innerHTML = (every === 1 ? 'Total months' : 'Total payments') + ' <span class="req">*</span>';
   $('#bPaidG label').textContent = editingBill ? (every === 1 ? 'Months paid (tracked)' : 'Payments made (tracked)') : (every === 1 ? 'Months already paid' : 'Payments already made');
   const ten = num($('#bTen').value), paidM = num($('#bPaidM').value || 0), due = $('#bDue').value, hint = $('#bTenHint');
   const done = editingBill && !editingBill.ongoing ? editingBill.tenureTotal - editingBill.tenureLeft : paidM;
@@ -501,12 +522,13 @@ function syncBillForm(){
 }
 function openBillSheet(it){
   editingBill = it; clearForm('billSheet');
-  $('#bCat').innerHTML = billCats().map(c => `<option value="${c.id}">${c.emoji ? c.emoji + '  ' : ''}${esc(c.name)}</option>`).join('');
+  $('#bCat').innerHTML = billCats().map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
   $('#billTitle').textContent = it ? 'Edit ' + it.name : 'Add EMI or bill';
   $('#bName').value = it ? it.name : '';
   setSelect('bCat', it && cat(it.catId) ? it.catId : (billCats()[0]?.id || ''));
   setSelect('bEvery', String(it ? ev(it) : 1));
   fillBankSelect(it?.bankId);
+  subTouched = !!it?.subId; fillSubSelect(it?.subId);
   setNum('bAmt', it ? it.amount : '');
   setSwitch('bOngoing', it ? it.ongoing : false);
   setNum('bTen', it && !it.ongoing ? it.tenureTotal : '');
@@ -525,7 +547,7 @@ function openBillSheet(it){
 async function saveBill(){
   clearForm('billSheet');
   const name = $('#bName').value.trim(), catId = $('#bCat').value, amt = num($('#bAmt').value), ongoing = isOn('bOngoing'), every = num($('#bEvery').value) || 1;
-  const ten = num($('#bTen').value), paidM = num($('#bPaidM').value || 0), due = $('#bDue').value, bankId = $('#bBank').value || null;
+  const ten = num($('#bTen').value), paidM = num($('#bPaidM').value || 0), due = $('#bDue').value, bankId = $('#bBank').value || null, subId = $('#bSub').value || null;
   let bad = 0;
   bad += setInvalid('bNameG', !name);
   bad += setInvalid('bAmtG', !(amt >= 1 && amt <= 1e8));
@@ -544,7 +566,7 @@ async function saveBill(){
     const id = editingBill.id;
     commit(() => {
       const x = findItem(id), paidMonths = x.ongoing ? 0 : x.tenureTotal - x.tenureLeft;
-      Object.assign(x, { name, catId, amount:amt, every, ongoing, due, anchorDay:parseISO(due).getDate(), reminders:rem, files, bankId });
+      Object.assign(x, { name, catId, subId, amount:amt, every, ongoing, due, anchorDay:parseISO(due).getDate(), reminders:rem, files, bankId });
       if(ongoing){ x.tenureTotal = null; x.tenureLeft = null; } else { x.tenureTotal = ten; x.tenureLeft = ten - paidMonths; }
     }, { type:'success', title:'Changes saved', body:name });
     afterSave();
@@ -552,7 +574,7 @@ async function saveBill(){
   } else {
     const id = uid();
     commit(() => {
-      const b = { id, kind:'bill', catId, name, amount:amt, every, ongoing, bankId, tenureTotal: ongoing ? null : ten, tenureLeft: ongoing ? null : ten - paidM,
+      const b = { id, kind:'bill', catId, subId, name, amount:amt, every, ongoing, bankId, tenureTotal: ongoing ? null : ten, tenureLeft: ongoing ? null : ten - paidM,
         paid: ongoing ? 0 : amt * paidM, due, anchorDay: parseISO(due).getDate(), reminders:rem, lastPaid:null, history:[], status:'active', files };
       if(!ongoing && paidM > 0) b.history.push({ date:T, amount: amt * paidM, n: paidM, opening:true });
       st().items.push(b);
@@ -652,6 +674,7 @@ function openChitSheet(it){
   editingChit = it; clearForm('chitSheet');
   const locked = !!(it && it.history.length);
   $('#chitTitle').textContent = it ? 'Edit ' + it.name : 'Add chit fund';
+  $('#chitSave').textContent = it ? 'Update chit fund' : 'Add chit fund';
   $('#cName').value = it ? it.name : ''; $('#cAgent').value = it ? it.agent || '' : '';
   setNum('cPot', it ? it.pot : ''); setNum('cMem', it ? it.members : '');
   setNum('cInst', it ? it.installment : ''); instTouched = !!it;
@@ -765,6 +788,7 @@ function openAuctionDate(it){
   $('#adDate').value = nextDue(it);
   $('#adHint').textContent = `By the regular schedule this round falls on ${fmtDate(roundDate(it, r))}. Reminders will follow the date you set.`;
   $('#adReset').classList.toggle('hidden', !announced(it));
+  $('#adSave').textContent = announced(it) ? 'Update auction date' : 'Set auction date';
   openSheet('auctionDateSheet');
 }
 function saveAuctionDate(){
@@ -917,10 +941,34 @@ function drawCatPreview(bump){
 function openCatSheet(c){
   editingCat = c; clearForm('catSheet');
   $('#catTitle').textContent = c ? 'Edit ' + c.name : 'New category';
+  $('#catSave').textContent = c ? 'Update category' : 'Add category';
+  catSubs = clone(c?.subs || []); $('#catSubName').value = ''; $('#catSubErr').style.display = 'none';
+  $('#catSubsG').classList.toggle('hidden', c?.kind === 'chit'); drawCatSubs();
   $('#catName').value = c ? c.name : ''; pickedEmoji = c ? c.emoji || '' : '';
   catRem.set(c ? c.reminders : [1]);
   $('#catDelete').classList.toggle('hidden', !c);
   drawCatPreview(false); openSheet('catSheet');
+}
+/* ---------- types inside a category ---------- */
+let catSubs = [];
+const SUB_ICONS = ['🚗','🏍️','🛵','🚕','🛺','🚜','🏡','🏠','🏗️','💵','🏦','🏧','📲','💳','💻','📱','📺','🎓','🏫','🏪','💼','🩺','🛡️','💍','🪙',
+  '🌐','📡','🎬','💡','💧','🔥','🧹','🛒','🧺','👶','🐾','✈️','🎮','📦'];
+function drawCatSubs(){
+  $('#catSubs').innerHTML = catSubs.length ? catSubs.map(x => `<span class="sub-chip">${e3d(x.emoji)}${esc(x.name)}<button type="button" data-sub-x="${esc(x.id)}" aria-label="Remove ${esc(x.name)}">${ICON.x}</button></span>`).join('')
+    : '<span class="sub-none">No types yet — add one below.</span>';
+}
+function addCatSub(){
+  const name = $('#catSubName').value.trim(), err = $('#catSubErr');
+  const bad = !name ? 'Type a name for the new type.' : catSubs.some(x => x.name.toLowerCase() === name.toLowerCase()) ? 'That type already exists.' : catSubs.length >= 20 ? 'Up to 20 types per category.' : '';
+  err.textContent = bad; err.style.display = bad ? 'block' : 'none';
+  if(bad) return;
+  catSubs.push({ id: uid().slice(0, 8), name, emoji: $('#catSubIcon').value });
+  $('#catSubName').value = ''; drawCatSubs();
+}
+function removeCatSub(id){
+  const used = editingCat ? st().items.filter(i => i.catId === editingCat.id && i.subId === id).length : 0, err = $('#catSubErr');
+  if(used){ err.textContent = `${used} item${used > 1 ? 's use' : ' uses'} this type. Change ${used > 1 ? 'them' : 'it'} first.`; err.style.display = 'block'; return; }
+  catSubs = catSubs.filter(x => x.id !== id); err.style.display = 'none'; drawCatSubs();
 }
 function saveCat(){
   clearForm('catSheet');
@@ -930,9 +978,9 @@ function saveCat(){
   closeSheet('catSheet');
   if(editingCat){
     const id = editingCat.id;
-    commit(() => Object.assign(cat(id), { name, emoji, reminders:rem }), { type:'success', title:'Category updated', body:`${name} · reminders ${remSummary(rem)}` });
+    commit(() => Object.assign(cat(id), { name, emoji, reminders:rem, ...(editingCat.kind === 'chit' ? {} : { subs:catSubs }) }), { type:'success', title:'Category updated', body:`${name} · reminders ${remSummary(rem)}` });
   } else {
-    commit(() => st().cats.push({ id:uid(), name, emoji, kind:'bill', ci:nextCi(), reminders:rem }),
+    commit(() => st().cats.push({ id:uid(), name, emoji, kind:'bill', ci:nextCi(), reminders:rem, subs:catSubs }),
       { type:'success', title:'Category added', body: emoji ? name : `${name} — showing "${name.charAt(0).toUpperCase()}" until you pick an icon` });
   }
 }
@@ -1080,8 +1128,8 @@ function drawExport(){
   const vis = exVisible(), sel = exSelected();
   $('#exCount').textContent = `Commitments · ${sel.length} of ${vis.length} selected`;
   $('#exList').innerHTML = vis.length ? vis.map(it => { const c = cat(it.catId), on = !ex.excluded.has(it.id);
-    return `<button type="button" class="ex-row ${on ? 'on' : ''}" data-row="${it.id}" role="checkbox" aria-checked="${on}" style="--accent:${catColor(c)}"><span class="cbox">${ICON.check}</span><span class="glyph">${glyphHTML(c)}</span>
-      <span style="min-width:0"><span class="ex-name">${esc(it.name)}</span><span class="ex-sub">${it.status === 'active' ? 'Active' : 'Closed ' + fmtDate(it.closedOn)} · ${esc(c ? c.name : '')} · ${fmtMoney(itemPaid(it))} paid</span></span></button>`; }).join('')
+    return `<button type="button" class="ex-row ${on ? 'on' : ''}" data-row="${it.id}" role="checkbox" aria-checked="${on}" style="--accent:${catColor(c)}"><span class="cbox">${ICON.check}</span><span class="glyph">${glyphHTML(c, it)}</span>
+      <span style="min-width:0"><span class="ex-name">${esc(it.name)}</span><span class="ex-sub">${it.status === 'active' ? 'Active' : 'Closed ' + fmtDate(it.closedOn)} · ${esc(catLabel(it))} · ${fmtMoney(itemPaid(it))} paid</span></span></button>`; }).join('')
     : '<div class="empty" style="border:none;padding:22px">Nothing matches these filters.</div>';
   $$('#exFormat .choice').forEach(b => b.classList.toggle('sel', b.dataset.fmt === ex.format));
   $('#exCsvWrap').classList.toggle('hidden', ex.format !== 'csv');
@@ -1131,7 +1179,7 @@ function openAlerts(){
     : a.length ? a.map(({ it, due, d }, i) => { const c = cat(it.catId);
         const when = d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : `In ${d} days`;
         const what = it.kind === 'chit' ? `Round ${it.roundsDone + 1} · ${fmtMoney(it.installment)}` : fmtMoney(it.amount);
-        return `<button class="notif-item" data-goto="${it.id}" style="--i:${i}"><span class="notif-ic glyph" style="--accent:${catColor(c)}">${glyphHTML(c)}</span>
+        return `<button class="notif-item" data-goto="${it.id}" style="--i:${i}"><span class="notif-ic glyph" style="--accent:${catColor(c)}">${glyphHTML(c, it)}</span>
           <span style="min-width:0"><span class="notif-t">${esc(it.name)}</span><span class="notif-s">${what} · ${fmtDate(due)}</span></span>
           <span class="notif-when badge ${d <= 1 ? 'due' : 'soon'}">${when}</span></button>`; }).join('')
     : `<div class="empty"><div class="em">${e3d('✅')}</div><b>You're all caught up</b>Nothing is inside its reminder window right now.</div>`;
@@ -1196,6 +1244,7 @@ let editingBank = null, onBankSaved = null;
 function openBankSheet(b, after){
   editingBank = b || null; onBankSaved = after || null; clearForm('bankSheet');
   $('#bkTitle').textContent = b ? 'Edit bank account' : 'Add bank account';
+  $('#bkSave').textContent = b ? 'Update bank account' : 'Add bank account';
   $('#bkBank').innerHTML = `<option value="">Choose your bank</option>` + BANK_GROUPS.map(([g, list]) => `<optgroup label="${esc(g)}">${list.map(([n]) => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</optgroup>`).join('')
     + `<optgroup label="Not listed"><option value="${OTHER_BANK}">Other — type the name</option></optgroup>`;
   const known = b && findBank(b.name);
@@ -1220,12 +1269,7 @@ function onBankPicked(){
   if(v === OTHER_BANK) setTimeout(() => $('#bkOther').focus(), 150);
   ifscHint(); drawBankBadge();
 }
-function drawBankBadge(){
-  const v = $('#bkBank').value, name = v === OTHER_BANK ? $('#bkOther').value.trim() : v, trig = $('#bkBank')._dd?.btn;
-  if(!trig) return;
-  trig.querySelector('.bank-badge')?.remove();
-  if(name) trig.insertAdjacentHTML('afterbegin', bankBadgeHTML(name, 'sm'));
-}
+const drawBankBadge = () => $('#bkBank')._dd?.sync();
 let ifscFound = null, ifscSeq = 0;
 function drawBranch(kind, msg){
   const el = $('#bkBranch');
@@ -1336,6 +1380,7 @@ async function checkUpdates(force){
   const r = await checkForUpdate();
   updateInfo = r.available ? r : null;
   localStorage.setItem(UPD_KEY, JSON.stringify(updateInfo));
+  if(r.available) notifyUpdate(r.latest).catch(() => {});
   renderUpdate();
   return r;
 }
@@ -1353,7 +1398,7 @@ const ACC_KEY = 'finly-acc-open';
 function initAccordions(){
   let open = [];
   try{ open = JSON.parse(localStorage.getItem(ACC_KEY) || '[]'); localStorage.removeItem('finly-acc'); }catch{ open = []; }
-  $$('.acc').forEach(a => {
+  $$('.acc:not(.static)').forEach(a => {
     const t = $('.acc-toggle', a), set = isOpen => { a.classList.toggle('closed', !isOpen); t.setAttribute('aria-expanded', String(isOpen)); };
     set(open.includes(a.dataset.acc));
     $('.acc-head', a).addEventListener('click', e => {
@@ -1372,7 +1417,12 @@ function initAccordions(){
 let wired = false;
 function wire(){
   if(wired) return; wired = true;
-  $$('#billSheet select, #chitSheet select, #exportSheet select, #bankSheet select').forEach(enhanceSelect);
+  $$('#billSheet select, #chitSheet select, #exportSheet select, #bankSheet select, #catSheet select').forEach(enhanceSelect);
+  setSelectIcons('bCat', o => { const c = cat(o.value); return c?.emoji ? e3d(c.emoji) : ''; });
+  setSelectIcons('bSub', o => { const sb = (cat($('#bCat').value)?.subs || []).find(x => x.id === o.value); return sb ? e3d(sb.emoji) : ''; });
+  setSelectIcons('bBank', o => { const b = bankById(o.value); return b ? bankBadgeHTML(b.name, 'sm') : ''; });
+  setSelectIcons('bkBank', o => o.value && o.value !== OTHER_BANK ? bankBadgeHTML(o.value, 'sm') : o.value === OTHER_BANK && $('#bkOther').value.trim() ? bankBadgeHTML($('#bkOther').value.trim(), 'sm') : '');
+  setSelectIcons('catSubIcon', o => e3d(o.value));
   billRem = makeReminderPicker($('#bRem'), () => { billRemTouched = true; billRem.setNote('Custom for this entry'); });
   chitRem = makeReminderPicker($('#cRem'), () => { chitRemTouched = true; chitRem.setNote('Custom for this chit'); });
   catRem = makeReminderPicker($('#catRem'));
@@ -1411,8 +1461,10 @@ function wire(){
   });
 
   bindSwitch('bOngoingRow', 'bOngoing', syncBillForm);
-  $('#bCat').addEventListener('change', () => { if(!billRemTouched){ billRem.set(cat($('#bCat').value)?.reminders || [1]); billRem.setNote('Category default'); } });
+  $('#bCat').addEventListener('change', () => { fillSubSelect(''); subTouched = false; guessSub(); if(!billRemTouched){ billRem.set(cat($('#bCat').value)?.reminders || [1]); billRem.setNote('Category default'); } });
   $('#bEvery').addEventListener('change', syncBillForm);
+  $('#bSub').addEventListener('change', () => { subTouched = true; });
+  $('#bName').addEventListener('input', guessSub);
   ['bTen', 'bPaidM'].forEach(id => $('#' + id).addEventListener('input', syncBillForm));
   $('#bDue').addEventListener('change', () => { $('#bDuePast').classList.toggle('hidden', !$('#bDue').value || diffDays(T, $('#bDue').value) >= 0); syncBillForm(); });
   $('#billSave').addEventListener('click', saveBill);
@@ -1445,6 +1497,11 @@ function wire(){
   $('#newCatBtn').addEventListener('click', () => openCatSheet(null));
   $('#catGrid').addEventListener('click', e => { const b = e.target.closest('.cat-card'); if(b) openCatSheet(cat(b.dataset.cat)); });
   $('#catSave').addEventListener('click', saveCat);
+  $('#catSubIcon').innerHTML = SUB_ICONS.map(e => `<option value="${e}"></option>`).join('');
+  $('#catSubIcon')._dd.sync();
+  $('#catSubAdd').addEventListener('click', addCatSub);
+  $('#catSubName').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); addCatSub(); } });
+  $('#catSubs').addEventListener('click', e => { const b = e.target.closest('[data-sub-x]'); if(b) removeCatSub(b.dataset.subX); });
   $('#catDelete').addEventListener('click', deleteCat);
 
   $('#exportSheet').addEventListener('click', e => {
@@ -1468,6 +1525,7 @@ function wire(){
   $('#palGrid').addEventListener('click', e => { const b = e.target.closest('.swatch'); if(!b || b.dataset.pal === st().settings.palette) return; withTransition(() => setSetting({ palette:b.dataset.pal })); });
   bindSeg($('#textSizeSeg'), b => setSetting({ text:b.dataset.size }));
   $('#alertsRow').addEventListener('click', () => setAlerts(!st().settings.alertsOn));
+  $('#boldRow').addEventListener('click', () => setSetting({ bold: !st().settings.bold }));
   $('#syncPill').addEventListener('click', () => { if(syncStatus().error === 'auth') return onLogout(true); if(page !== 'home') go('home'); runSync(); });
   $('#syncNowBtn').addEventListener('click', () => { if(!syncStatus().online) return toast({ type:'warning', title:'You\'re offline', body:'Changes are saved on this phone and will upload when you reconnect.' }); runSync(); });
   $('#checkUpdateBtn').addEventListener('click', async () => {
@@ -1521,6 +1579,7 @@ export function startApp(u, { logout }){
   $('#auth').classList.add('hidden'); $('#app').classList.remove('hidden');
   applySettings(); go('home'); render(); layoutFab();
   scheduleReminders(reminderPlan);
+  prepareUpdateChannel();
   scheduleSync(400);
   loadUpdateInfo(); renderUpdate();
   setTimeout(() => checkUpdates(true).catch(() => {}), 2500);

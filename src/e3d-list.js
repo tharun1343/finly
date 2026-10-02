@@ -6,7 +6,9 @@ export const E3D = {
   '✈️':'Airplane', '🎮':'Video game', '🎵':'Musical note', '📚':'Books', '👕':'T-shirt', '🐾':'Paw prints', '🎁':'Wrapped gift',
   '💳':'Credit card', '🧾':'Receipt', '💰':'Money bag', '🛠️':'Hammer and wrench', '👶':'Baby', '🏋️':'Person lifting weights',
   '☕':'Hot beverage', '🌐':'Globe with meridians', '📺':'Television', '🔌':'Electric plug', '💼':'Briefcase', '🪙':'Coin',
-  '📡':'Satellite antenna', '🧑‍🏫':'Teacher', '🏡':'House with garden', '🛵':'Motor scooter', '💍':'Ring', '📦':'Package',
+  '📡':'Satellite antenna', '💵':'Dollar banknote', '💻':'Laptop', '🏪':'Convenience store', '🎬':'Clapper board', '💧':'Droplet',
+  '🔥':'Fire', '🧹':'Broom', '🏫':'School', '🛡️':'Shield', '🚜':'Tractor', '🏧':'Atm sign', '🅱️':'B button blood type', '🧺':'Basket',
+  '🚕':'Taxi', '🛺':'Auto rickshaw', '📲':'Mobile phone with arrow', '🏗️':'Building construction', '🩺':'Stethoscope', '🧑‍🏫':'Teacher', '🏡':'House with garden', '🛵':'Motor scooter', '💍':'Ring', '📦':'Package',
   // app chrome
   '⏰':'Alarm clock', '☁️':'Cloud', '🗂️':'Card index dividers', '🔕':'Bell with slash', '✅':'Check mark button', '📄':'Page facing up',
   '📊':'Bar chart', '🎨':'Artist palette', '🔤':'Input latin letters', '🌙':'Crescent moon', '🔔':'Bell', 'ℹ️':'Information',
