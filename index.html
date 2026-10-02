@@ -120,7 +120,7 @@
 <!-- ======================= APP ======================= -->
 <div class="phone hidden" id="app">
   <header class="topbar">
-    <div class="brand"><div class="brand-mark"><img src="./favicon.svg" alt="Finly"></div><div class="brand-text"><div class="hi" id="greeting">Hello</div><div class="name" id="hdrName"></div></div></div>
+    <div class="brand"><button class="hdr-avatar" id="hdrAvatar" aria-label="Open profile"><span class="pa-face" id="hdrAvatarFace"></span></button><div class="brand-text"><div class="hi" id="greeting">Hello</div><div class="name" id="hdrName"></div></div></div>
     <div class="topbar-actions">
       <button class="sync-pill" id="syncPill" aria-label="Sync status"><span class="sync-dot"></span><span id="syncText">Synced</span></button>
       <button class="icon-btn" id="bellBtn" aria-label="Alerts"><span class="bell-count gone" id="bellCount">0</span>
@@ -360,9 +360,8 @@
       <div class="fieldset-title">Auctions held so far</div>
       <div class="fgroup" id="cDoneG"><label for="cDone">Number of auctions held</label><input id="cDone" type="text" inputmode="numeric" data-int value="0" autocomplete="off"><div class="ferr" id="cDoneErr">Must be less than the no. of people.</div></div>
       <div class="switch-row" id="cTakenRow"><div><div class="sr-label">I've already taken the pot</div><div class="sr-sub">Moves this chit to debt</div></div><span class="switch" id="cTaken" role="switch" aria-checked="false"></span></div>
-      <div class="frow hidden" id="cTakenFields">
-        <div class="fgroup" id="cTakenRG"><label for="cTakenR">Taken in round</label><input id="cTakenR" type="text" inputmode="numeric" data-int autocomplete="off"><div class="ferr" id="cTakenRErr">Pick a completed round.</div></div>
-        <div class="fgroup" id="cTakenBG"><label for="cTakenB">Your winning bid</label><div class="money-wrap"><input id="cTakenB" type="text" inputmode="decimal" data-money value="0" autocomplete="off"></div><div class="ferr">Must be less than the chit value.</div></div>
+      <div class="hidden" id="cTakenFields">
+        <div class="fgroup" id="cTakenRG"><label for="cTakenR">Taken in round</label><input id="cTakenR" type="text" inputmode="numeric" data-int autocomplete="off"><div class="ferr" id="cTakenRErr">Pick a completed round.</div><div class="fhint">Enter your winning bid in that round's row below. You pay the full amount from that round on.</div></div>
       </div>
       <div class="rounds-list" id="cRounds"></div>
       <div class="rounds-total" id="cRoundsTotal"></div>
