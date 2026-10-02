@@ -381,6 +381,9 @@ body.sheet-open .toast-stack{ z-index:70; }
 .h-round{ font-weight:var(--w8); color:var(--text-dim); }
 .h-desc{ color:var(--text-dim); line-height:1.4; } .h-desc b{ color:var(--text); }
 .h-amt{ font-weight:var(--w7); font-variant-numeric:tabular-nums; }
+.h-date{ color:var(--text-faint); }
+.h-row.upcoming .h-round, .h-row.upcoming .h-amt{ color:var(--text-faint); font-weight:var(--w6); }
+.rounds-view .h-row{ font-size:var(--t-sm); padding:10px 0; }
 .closed-list{ display:flex; flex-direction:column; gap:8px; }
 .closed-row{ display:flex; align-items:center; gap:12px; padding:12px 12px 12px 14px; border-radius:var(--radius-sm); background:var(--glass); border:1px solid var(--glass-border); animation: riseIn .4s var(--spring) both; }
 .closed-row .glyph{ width:36px; height:36px; border-radius:11px; font-size:16px; filter: saturate(.6); }

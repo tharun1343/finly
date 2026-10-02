@@ -21,7 +21,10 @@ const cat = id => st().cats.find(c => c.id === id);
 const findItem = id => st().items.find(i => i.id === id);
 const activeItems = () => st().items.filter(i => i.status === 'active');
 const closedItems = () => st().items.filter(i => i.status === 'closed').sort((a, b) => dayNum(b.closedOn) - dayNum(a.closedOn));
-const roundDate = (c, r) => addMonths(c.start, (r - 1) * c.interval, parseISO(c.start).getDate());
+/** Round r's date. Once a chit has an anchor (a round's actual date), later rounds follow it instead of the start date. */
+const roundDate = (c, r) => c.anchorRound && c.anchorDate && r > c.anchorRound
+  ? addMonths(c.anchorDate, (r - c.anchorRound) * c.interval, parseISO(c.anchorDate).getDate())
+  : addMonths(c.start, (r - 1) * c.interval, parseISO(c.start).getDate());
 const effReminders = it => it.reminders ?? (cat(it.catId)?.reminders ?? [1]);
 const ev = it => it.every || 1;
 const PER = { 1:'month', 3:'quarter', 6:'6 months', 12:'year' };
@@ -167,7 +170,7 @@ function chitCompact(it, i){
       <div class="fig"><span class="fig-label">Paid in</span><span class="fig-value">${fmtMoney(it.paidIn)}</span></div>
       ${taken ? `<div class="fig"><span class="fig-label">Still owe</span><span class="fig-value neg">${fmtMoney(it.installment * (it.members - it.roundsDone))}</span></div>`
               : `<div class="fig"><span class="fig-label">Commission</span><span class="fig-value pos">+${fmtMoney(it.commission)}</span></div>`}</div>
-      <div class="actions"><button class="round-btn ghost" data-act="edit" aria-label="Edit ${esc(it.name)}">${ICON.edit}</button>
+      <div class="actions"><button class="round-btn ghost" data-act="hist" aria-label="View all rounds">${ICON.history}</button><button class="round-btn ghost" data-act="edit" aria-label="Edit ${esc(it.name)}">${ICON.edit}</button>
       <button class="pay-btn" data-act="pay" aria-label="Mark round ${r} as paid">${ICON.check}<span>Mark as paid</span></button></div></div>
   </article>`;
 }
@@ -278,8 +281,6 @@ function chitDetail(it, i){
       <div class="metric"><div class="fig-label">Still waiting</div><div class="fig-value">${it.members - it.roundsDone}</div><div class="fig-sub">people incl. you</div></div>`;
     note = `You haven't taken the pot yet. Each round you get a share of the winning bid, so you pay less — counted as savings until you take it.`;
   }
-  const hist = it.history.length ? [...it.history].reverse().map(h => `<div class="h-row"><span class="h-round">R${h.round}</span><span class="h-desc">${histDesc(h, fmtMoney, true)}${lateNote(h, fmtMoney)}<br><span style="color:var(--text-faint)">${fmtDate(h.date)}</span></span><span class="h-amt">${fmtMoney(h.paid)}</span></div>`).join('')
-    : '<div class="h-desc" style="padding:6px 0">No rounds recorded yet.</div>';
   return `<article class="chit-card ${enterCls('w_' + it.id)}" data-id="${it.id}" data-state="${taken ? 'taken' : 'saving'}" style="--i:${i}">
     <div class="chit-head"><div style="min-width:0"><div class="chit-name">${c?.emoji ? e3d(c.emoji, 'name-3d') : ''}${esc(it.name)} <button type="button" class="info-i" data-info="${esc(note)}" aria-label="What this means">i</button> ${clipHTML(it)}</div><div class="chit-meta">${meta}</div></div>
       <span class="status-pill ${taken ? 'debt' : 'save'}">${taken ? 'Debt' : 'Savings'}</span></div>
@@ -288,9 +289,8 @@ function chitDetail(it, i){
     <div class="chit-actions">
       <button class="btn btn-primary btn-grow nowrap" data-act="pay" aria-label="Mark round ${r} as paid">${ICON.check}Mark as paid</button>
       <button class="round-btn ghost" data-act="edit" aria-label="Edit">${ICON.edit}</button>
-      <button class="round-btn ghost" data-act="hist" aria-label="Show history">${ICON.history}</button>
+      <button class="round-btn ghost" data-act="hist" aria-label="View all rounds">${ICON.history}</button>
       <button class="round-btn ghost" data-export="${it.id}" aria-label="Export ${esc(it.name)}">${ICON.download}</button></div>
-    <div class="history"><div><div class="history-inner">${hist}</div></div></div>
   </article>`;
 }
 
@@ -300,15 +300,13 @@ function renderWallet(){
   $('#whSaveFoot').textContent = `${t.savingCount} not taken · +${fmtMoney(t.savingComm)} commission`;
   $('#whDebtFoot').textContent = `${t.takenCount} taken · full amount each round`;
   const chits = activeItems().filter(i => i.kind === 'chit');
-  const open = new Set($$('#chitList .history.open').map(h => h.closest('[data-id]').dataset.id));
   $('#chitList').innerHTML = chits.length ? chits.map(chitDetail).join('') : `<div class="empty"><div class="em">${e3d('🤝')}</div><b>No active chit funds</b>Tap + to add one.</div>`;
-  open.forEach(id => $(`#chitList [data-id="${id}"] .history`)?.classList.add('open'));
   const cl = closedItems();
   $('#closedCount').textContent = cl.length ? `(${cl.length})` : '';
   $('#closedList').innerHTML = cl.length ? cl.map(it => { const c = cat(it.catId);
     const sub = it.kind === 'chit' ? `${it.members} rounds${it.taken ? ' · received ' + fmtMoney(it.taken.received) : ''}` : `${it.tenureTotal} months`;
-    return `<div class="closed-row" style="--accent:${catColor(c)}"><div class="glyph">${glyphHTML(c, it)}</div><div style="min-width:0"><div class="cr-name">${esc(it.name)}</div><div class="cr-sub">Closed ${fmtDate(it.closedOn)} · ${sub}</div></div><div class="cr-amt"><span>Paid</span>${fmtMoney(itemPaid(it))}</div>
-      <button class="mini-btn" data-export="${it.id}" aria-label="Export ${esc(it.name)}">${ICON.download}</button></div>`; }).join('')
+    return `<div class="closed-row" data-id="${it.id}" style="--accent:${catColor(c)}"><div class="glyph">${glyphHTML(c, it)}</div><div style="min-width:0"><div class="cr-name">${esc(it.name)}</div><div class="cr-sub">Closed ${fmtDate(it.closedOn)} · ${sub}</div></div><div class="cr-amt"><span>Paid</span>${fmtMoney(itemPaid(it))}</div>
+      ${it.kind === 'chit' ? `<button class="mini-btn" data-act="hist" aria-label="View all rounds of ${esc(it.name)}">${ICON.history}</button>` : ''}<button class="mini-btn" data-export="${it.id}" aria-label="Export ${esc(it.name)}">${ICON.download}</button></div>`; }).join('')
     : '<div class="empty" style="padding:22px">Completed EMIs and chits move here automatically.</div>';
 }
 
@@ -422,7 +420,7 @@ function onCardAction(e){
   const card = btn.closest('[data-id]'); const it = findItem(card.dataset.id); if(!it) return;
   const act = btn.dataset.act;
   if(act === 'edit') return it.kind === 'chit' ? openChitSheet(it) : openBillSheet(it);
-  if(act === 'hist'){ card.querySelector('.history').classList.toggle('open'); return; }
+  if(act === 'hist') return openChitRounds(it);
   if(act === 'files') return openFilesSheet(it);
   if(act === 'date') return openAuctionDate(it);
   if(act === 'pay'){ if(btn.dataset.busy) return; btn.dataset.busy = '1'; setTimeout(() => delete btn.dataset.busy, 700); return it.kind === 'chit' ? openRoundSheet(it) : payBill(it); }
@@ -665,11 +663,15 @@ let editingChit = null, chitRemTouched = false, instTouched = false, chitRem;
 function chitSummary(){
   const p = num($('#cPot').value), m = num($('#cMem').value), inst = num($('#cInst').value), iv = num($('#cInt').value), s = $('#cStart').value;
   if(!(p > 0) || !(m >= 2) || !s){ $('#chitSummary').innerHTML = 'Fill in the value, people and start date to see the schedule.'; return; }
-  const fake = { start:s, interval:iv }, end = roundDate(fake, m), coll = (inst || 0) * m;
+  const done = num($('#cDone').value), lastDate = isOn('cProg') && !editingChit && isInt(done) && done > 0 && done < m && $(`#cRounds .round-row[data-r="${done}"] [data-f="date"]`)?.value;
+  const anchor = lastDate ? { anchorRound:done, anchorDate:lastDate } : editingChit?.anchorRound ? { anchorRound:editingChit.anchorRound, anchorDate:editingChit.anchorDate } : {};
+  const fake = { start:s, interval:iv, ...anchor }, end = roundDate(fake, m), coll = (inst || 0) * m;
   let html = `<b>${m} rounds</b> · every ${iv === 1 ? 'month' : iv + ' months'}<br>${fmtDate(s)} → <b>${fmtDate(end)}</b>`;
   if(inst > 0) html += `<br>${fmtMoney(inst)} × ${m} people = <b>${fmtMoney(coll)}</b> ` + (Math.abs(coll - p) < 1 ? '✓ matches the chit value' : `<span class="warn">— doesn't match ${fmtMoney(p)}</span>`);
   if(isOn('cAgentFirst')) html += '<br>Round 1 goes to the agent (no auction).';
-  if(isOn('cProg') && !editingChit){ const d = num($('#cDone').value); if(isInt(d) && d >= 0 && d < m) html += `<br>Next: <b>round ${d + 1}</b> around ${fmtDate(roundDate(fake, d + 1))} — you can change it once it's announced.`; }
+  if(isOn('cProg') && !editingChit){ const d = num($('#cDone').value); if(isInt(d) && d >= 0 && d < m){
+    const nd = roundDate(fake, d + 1);
+    html += `<br>Next: <b>round ${d + 1}</b> around <b>${fmtDate(nd)}</b>${lastDate ? ` — ${iv === 1 ? 'a month' : iv + ' months'} after round ${d}` : ''}. You can change it once it's announced.`; } }
   $('#chitSummary').innerHTML = html;
 }
 
@@ -728,6 +730,7 @@ function roundsTotal(){
     + (bid >= 0 ? `<br>Took the pot in round ${takenR} · bid <b>${fmtMoney(bid)}</b>${pot > bid ? ` · received <b>${fmtMoney(pot - bid)}</b>` : ''}` : '') : '';
 }
 function onRoundsInput(e){
+  if(e.target.dataset.f === 'date') chitSummary();
   const f = e.target.dataset.f, row = e.target.closest('.round-row'); if(!row) return;
   const o = roundRows[+row.dataset.r - 1] ||= {};
   if(f === 'paid') o.paidTouched = true;
@@ -756,6 +759,7 @@ function openChitSheet(it){
   $('#cAgentFirstRow').style.opacity = locked ? .55 : 1;
   $('#chitLock').classList.toggle('hidden', !locked);
   $('#cProgRow').classList.toggle('hidden', !!it); setSwitch('cProg', false); $('#cProgFields').classList.add('hidden');
+  $('#cEditRoundsRow').classList.toggle('hidden', !locked); setSwitch('cEditRounds', false); $('#cEditRoundsFields').classList.add('hidden'); $('#cEditList').innerHTML = '';
   roundRows = [];
   setNum('cDone', 0); setSwitch('cTaken', false); $('#cTakenFields').classList.add('hidden'); setNum('cTakenR', '');
   drawRounds();
@@ -803,6 +807,8 @@ async function saveChit(){
     }
     past = { done, taken, rows };
   }
+  const editRows = editingChit && isOn('cEditRounds') ? readEditRounds() : null;
+  if(editRows) bad += validateEditRounds(editRows);
   if(bad){ showAlert('chitAlert', `Please fix ${bad} highlighted field${bad > 1 ? 's' : ''}.`); scrollToError('chitSheet'); return; }
   const rem = chitRemTouched ? chitRem.get() : null;
   const { files, afterSave } = await attCommit();
@@ -810,8 +816,9 @@ async function saveChit(){
   if(editingChit){
     const id = editingChit.id;
     commit(() => { const x = findItem(id); Object.assign(x, { name, agent, agentCut:agCut, reminders:rem, files });
-      if(!x.history.length) Object.assign(x, { pot, members:m, installment:inst, interval:iv, start:s, agentFirst }); },
-      { type:'success', title:'Chit updated', body:name });
+      if(!x.history.length) Object.assign(x, { pot, members:m, installment:inst, interval:iv, start:s, agentFirst });
+      if(editRows) applyEditRounds(x, editRows); },
+      { type:'success', title:'Chit updated', body: editRows ? `${name} · ${editRows.length} round${editRows.length === 1 ? '' : 's'} updated` : name });
     afterSave();
     flashCard(id);
   } else {
@@ -831,6 +838,8 @@ async function saveChit(){
         c.paidIn = round2(c.history.reduce((s_, h) => s_ + h.paid, 0));
         c.commission = round2(c.history.reduce((s_, h) => s_ + (h.share || 0), 0));
         c.taken = past.taken;
+        const last = c.history[c.history.length - 1];
+        c.anchorRound = last.round; c.anchorDate = last.date;
       }
       st().items.push(c);
     }, { type:'success', title:name + ' added', body: past?.taken ? 'Tracked as debt — you\'ve taken the pot.' : 'Tracked as savings until you take the pot.' });
@@ -846,6 +855,89 @@ function deleteChit(){
     commit(() => { st().items = st().items.filter(i => i.id !== it.id); }, { type:'warning', title:'Chit deleted', body:it.name });
     queueItemFiles(it);
   }});
+}
+
+/* ---------- every round of a chit, past and upcoming ---------- */
+function openChitRounds(it){
+  const done = it.history.length, next = it.roundsDone + 1;
+  $('#crTitle').textContent = `${it.name} · rounds`;
+  $('#crSub').textContent = `${it.roundsDone} of ${it.members} done · ${fmtMoney(it.pot)} · every ${it.interval === 1 ? 'month' : it.interval + ' months'}`;
+  $('#crSummary').innerHTML = `<div class="calc-line"><span>You've paid in</span><b>${fmtMoney(it.paidIn)}</b></div>
+    <div class="calc-line"><span>Total commission</span><b class="pos">+${fmtMoney(it.commission)}</b></div>
+    ${it.taken ? `<div class="calc-line"><span>Took the pot in round ${it.taken.round}${it.taken.bid ? ` · bid ${fmtMoney(it.taken.bid)}` : ''}</span><b class="pos">${fmtMoney(it.taken.received)}</b></div>` : ''}
+    ${it.lateFees ? `<div class="calc-line"><span>Late fees</span><b class="neg">${fmtMoney(it.lateFees)}</b></div>` : ''}`;
+  let html = it.history.map(h => `<div class="h-row"><span class="h-round">R${h.round}</span><span class="h-desc">${histDesc(h, fmtMoney, true)}${lateNote(h, fmtMoney)}<br><span class="h-date">${fmtDate(h.date)}</span></span><span class="h-amt">${fmtMoney(h.paid)}</span></div>`).join('');
+  if(it.status === 'active') for(let r = Math.max(done, it.roundsDone) + 1; r <= it.members; r++){
+    const d = r === next ? nextDue(it) : roundDate(it, r);
+    html += `<div class="h-row upcoming"><span class="h-round">R${r}</span><span class="h-desc">${r === next ? '<b>Next round</b>' : 'Upcoming'}${it.taken ? ' · full amount' : ''}<br><span class="h-date">${fmtDate(d)}</span></span><span class="h-amt">${fmtMoney(it.installment)}</span></div>`;
+  }
+  $('#crList').innerHTML = html || '<div class="h-desc" style="padding:6px 0">No rounds yet.</div>';
+  $('#crEdit').classList.toggle('hidden', !done);
+  $('#crEdit').onclick = () => { closeSheet('chitRoundsSheet'); setTimeout(() => { openChitSheet(it); setSwitch('cEditRounds', true); toggleEditRounds(true); }, 160); };
+  openSheet('chitRoundsSheet');
+}
+
+/* ---------- editing rounds that are already recorded ---------- */
+const HIST_KIND = { agent:'agent', commission:'auction', taken:'taken', full:'full', last:'last', opening:'opening' };
+const HIST_TAG = { agent:'<span class="tag agent">Agent\'s round</span>', taken:'<span class="tag taken">You took the pot · full amount</span>', full:'<span class="tag full">Full amount</span>',
+  last:'<span class="tag agent">Final round · pot came to you</span>', opening:'<span class="tag full">Opening balance</span>' };
+function toggleEditRounds(on){
+  $('#cEditRoundsFields').classList.toggle('hidden', !on);
+  if(on) drawEditRounds();
+  footShadow($('#chitSheet'));
+}
+function drawEditRounds(){
+  const it = editingChit; if(!it) return;
+  $('#cEditList').innerHTML = it.history.map((h, i) => {
+    const kind = HIST_KIND[h.type] || 'full', money = (f, v, ph = '0') => `<div class="money-wrap"><input type="text" inputmode="decimal" data-money data-f="${f}" value="${v ?? ''}" placeholder="${ph}" autocomplete="off"></div>`;
+    const third = kind === 'auction' ? `<div class="fgroup" id="er${i}cG"><label>Commission</label>${money('comm', fmtNumInput(String(h.share || 0), true))}</div>`
+      : kind === 'taken' ? `<div class="fgroup" id="er${i}bG"><label>Your bid</label>${money('bid', fmtNumInput(String(h.bid || 0), true))}</div>`
+      : `<div class="fgroup"><label>Commission</label><div class="money-wrap"><input type="text" value="0" disabled></div></div>`;
+    return `<div class="round-row" data-i="${i}"><div class="round-row-head"><span>Round ${h.type === 'opening' ? '1–' + h.round : h.round}</span>${HIST_TAG[kind] || ''}</div><div class="rr-grid">
+      <div class="fgroup rr-date" id="er${i}dG"><label>Date</label><input type="date" data-f="date" value="${h.date}" max="${T}"></div>
+      <div class="fgroup" id="er${i}pG"><label>You paid</label>${money('paid', fmtNumInput(String(h.paid), true))}</div>${third}</div></div>`;
+  }).join('');
+  $$('#cEditList [data-money]').forEach(bindNumeric);
+  editRoundsTotal();
+}
+function readEditRounds(){
+  return $$('#cEditList .round-row').map(row => { const v = f => row.querySelector(`[data-f="${f}"]`)?.value;
+    return { i:+row.dataset.i, date:v('date'), paid:num(v('paid')), comm: v('comm') == null ? null : num(v('comm') || 0), bid: v('bid') == null ? null : num(v('bid') || 0) }; });
+}
+function editRoundsTotal(){
+  const it = editingChit; if(!it) return;
+  const rows = readEditRounds(), paid = rows.reduce((t, r) => t + (r.paid || 0), 0), comm = rows.reduce((t, r) => t + (r.comm || 0), 0), tk = rows.find(r => r.bid != null);
+  const last = rows[rows.length - 1];
+  $('#cEditTotal').innerHTML = `${rows.length} round${rows.length === 1 ? '' : 's'} · you paid <b>${fmtMoney(paid)}</b><br>Total commission <b class="pos">+${fmtMoney(comm)}</b>`
+    + (tk && tk.bid >= 0 ? `<br>Took the pot · bid <b>${fmtMoney(tk.bid)}</b> · received <b>${fmtMoney(it.pot - tk.bid)}</b>` : '')
+    + (it.status === 'active' && last?.date && it.roundsDone < it.members ? `<br>Next round ${it.roundsDone + 1} around <b>${fmtDate(addMonths(last.date, it.interval))}</b>` : '');
+}
+/** Checks the edited rounds; returns the number of bad fields. */
+function validateEditRounds(rows){
+  const it = editingChit; let bad = 0, prev = null;
+  for(const r of rows){
+    const h = it.history[r.i];
+    bad += setInvalid(`er${r.i}dG`, !r.date || diffDays(T, r.date) > 0 || (prev && diffDays(prev, r.date) < 0));
+    bad += setInvalid(`er${r.i}pG`, !(r.paid >= 0 && (h.type === 'opening' || r.paid <= it.installment)));
+    if(r.comm != null) bad += setInvalid(`er${r.i}cG`, !(r.comm >= 0 && r.comm <= it.installment));
+    if(r.bid != null) bad += setInvalid(`er${r.i}bG`, !(r.bid >= 0 && r.bid < it.pot));
+    if(r.date) prev = r.date;
+  }
+  return bad;
+}
+/** Writes the edited rounds into the chit and recomputes its totals. */
+function applyEditRounds(x, rows){
+  const lastBefore = x.history[x.history.length - 1]?.date;
+  for(const r of rows){
+    const h = x.history[r.i]; h.date = r.date; h.paid = round2(r.paid);
+    if(r.comm != null && round2(r.comm) !== h.share){ h.share = round2(r.comm); h.bid = round2(h.share * (x.members - h.round) + (x.agentCut || 0)); }
+    if(r.bid != null){ h.bid = round2(r.bid); h.received = round2(x.pot - h.bid); x.taken = { round:h.round, bid:h.bid, received:h.received }; }
+  }
+  x.paidIn = round2(x.history.reduce((t, h) => t + h.paid, 0));
+  x.commission = round2(x.history.reduce((t, h) => t + (h.share || 0), 0));
+  const last = x.history[x.history.length - 1];
+  if(last && last.date !== lastBefore){ x.anchorRound = last.round; x.anchorDate = last.date; }
+  if(x.status === 'closed' && last) x.closedOn = last.date;
 }
 
 /* ---------- announced auction date ---------- */
@@ -1564,6 +1656,15 @@ function wire(){
   ['cInt', 'cStart', 'cDone', 'cTakenR'].forEach(id => { $('#' + id).addEventListener('input', chitChanged); $('#' + id).addEventListener('change', chitChanged); });
   $('#cAgComm').addEventListener('input', chitSummary);
   $('#cRounds').addEventListener('input', onRoundsInput);
+  $('#cRounds').addEventListener('change', e => { if(e.target.dataset.f === 'date') chitSummary(); });
+  bindSwitch('cEditRoundsRow', 'cEditRounds', toggleEditRounds);
+  $('#cEditList').addEventListener('input', e => {
+    const f = e.target.dataset.f, row = e.target.closest('.round-row');
+    if(f === 'paid') row.dataset.paidTouched = '1';
+    if(f === 'comm' && !row.dataset.paidTouched && editingChit) row.querySelector('[data-f="paid"]').value = fmtNumInput(String(round2(Math.max(0, editingChit.installment - (num(e.target.value) || 0)))), true);
+    editRoundsTotal();
+  });
+  $('#cEditList').addEventListener('change', editRoundsTotal);
   $('#chitSave').addEventListener('click', saveChit);
   $('#chitDelete').addEventListener('click', deleteChit);
   $('#rSave').addEventListener('click', saveRound);

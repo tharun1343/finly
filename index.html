@@ -337,7 +337,7 @@
   <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="chitTitle">Add chit fund</div><div class="sheet-sub">Fields marked <span class="req">*</span> are required.</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
   <div class="sheet-scroll">
     <div class="form-alert" id="chitAlert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><span></span></div>
-    <div class="lock-note hidden" id="chitLock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Chit value, people, amount, schedule and start date are locked once rounds are recorded. Delete and re-add the chit if those were entered wrong.</span></div>
+    <div class="lock-note hidden" id="chitLock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Chit value, people, amount, schedule and start date are locked once rounds are recorded. Recorded rounds can be fixed with "Edit past rounds" below.</span></div>
     <div class="frow">
       <div class="fgroup" id="cNameG"><label for="cName">Chit name <span class="req">*</span></label><input id="cName" maxlength="40" placeholder="e.g. Group A" autocomplete="off"><div class="ferr">Give it a name.</div></div>
       <div class="fgroup"><label for="cAgent">Agent name</label><input id="cAgent" maxlength="40" placeholder="Optional" autocomplete="off"></div>
@@ -366,6 +366,12 @@
       <div class="rounds-list" id="cRounds"></div>
       <div class="rounds-total" id="cRoundsTotal"></div>
     </div>
+    <div class="switch-row hidden" id="cEditRoundsRow"><div><div class="sr-label">Edit past rounds</div><div class="sr-sub">Fix dates, amounts, commission or your bid</div></div><span class="switch" id="cEditRounds" role="switch" aria-checked="false"></span></div>
+    <div class="fieldset hidden" id="cEditRoundsFields">
+      <div class="fieldset-title">Recorded rounds</div>
+      <div class="rounds-list" id="cEditList"></div>
+      <div class="rounds-total" id="cEditTotal"></div>
+    </div>
     <div class="summary-box" id="chitSummary">Fill in the value, people and start date to see the schedule.</div>
     <div class="fgroup"><span class="flabel">Remind me before each round</span><div id="cRem"></div></div>
     <div class="fgroup" style="margin-bottom:0"><span class="flabel">Documents (up to 3 photos or PDFs)</span><div class="att-list" id="cFiles"></div></div>
@@ -381,6 +387,15 @@
     <div class="fgroup" id="rDateG" style="margin-bottom:0"><label for="rDate">Paid on</label><input id="rDate" type="date"><div class="ferr">Pick a date that isn't in the future.</div></div>
   </div>
   <div class="sheet-foot"><button class="btn btn-secondary" data-close>Cancel</button><button class="btn btn-primary btn-grow" id="rSave">Record round</button></div>
+</div></div>
+
+<div class="sheet-overlay" id="chitRoundsSheet"><div class="sheet">
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="crTitle">Rounds</div><div class="sheet-sub" id="crSub"></div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-scroll">
+    <div class="calc-box" id="crSummary" style="margin-bottom:14px"></div>
+    <div class="rounds-view" id="crList"></div>
+  </div>
+  <div class="sheet-foot"><button class="btn btn-secondary" data-close>Close</button><button class="btn btn-primary btn-grow" id="crEdit">Edit past rounds</button></div>
 </div></div>
 
 <div class="sheet-overlay" id="catSheet"><div class="sheet">
