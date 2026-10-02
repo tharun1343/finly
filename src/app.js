@@ -6,6 +6,7 @@ import { toast, layoutFab, openSheet, closeSheet, confirmBox, setInvalid, showAl
   moveThumb, bindSeg, moveAllThumbs, setNum, bindNumeric, enhanceSelect, setSelect, makeReminderPicker, remSummary, withTransition, flip, handleBackInOverlays, footShadow, fmtNumInput } from './ui.js';
 import { isNative, APP_VERSION, APK_URL, setBarsStyle, scheduleReminders, notifyPermission, requestNotifyPermission, saveFile, checkForUpdate, openExternal } from './native.js';
 import { paymentRows, summaryRow, buildCsv, buildPdf } from './export.js';
+import { BANK_GROUPS, OTHER_BANK, findBank, bankFromIfsc, shortName, IFSC_RE, maskAcct } from './banks.js';
 
 const st = () => store.state;
 let user = { id:'', email:'', name:'' };
@@ -26,6 +27,7 @@ const perLabel = n => PER[n] || `${n} months`;
 const announced = it => it.kind === 'chit' && it.nextDate && it.nextDateRound === it.roundsDone + 1;
 const nextDue = it => it.kind === 'chit' ? (announced(it) ? it.nextDate : roundDate(it, it.roundsDone + 1)) : it.due;
 const fileCount = it => (it.files || []).length;
+const bankTagHTML = it => { const b = it.bankId && (store.state.settings.banks || []).find(x => x.id === it.bankId); return b ? `<span class="bank-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 10h18L12 4 3 10ZM5 10v8M19 10v8M9.5 10v8M14.5 10v8M3 20h18"/></svg>${esc(shortName(b.name))} ${maskAcct(b.acct)}</span>` : ''; };
 const clipHTML = it => fileCount(it) ? `<button class="clip-badge" data-act="files" aria-label="${fileCount(it)} documents"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>${fileCount(it)}</button>` : '';
 const alertWindow = it => Math.max(7, ...effReminders(it));
 const paidRecently = it => it.kind === 'bill' && !!it.lastPaid && diffDays(T, it.due) > alertWindow(it);
@@ -134,7 +136,7 @@ function billCard(it, i){
   const recent = paidRecently(it);
   return `<article class="item-card ${enterCls(it.id)}" data-id="${it.id}" style="--accent:${catColor(c)};--i:${i}">
     <div class="ic-top"><div class="ic-id"><div class="glyph">${glyphHTML(c)}</div><div style="min-width:0"><div class="ic-name">${esc(it.name)}</div>
-      <div class="ic-meta"><span class="badge ${st_.cls}">${st_.label}</span><span class="due-text ${st_.urgent ? 'urgent' : ''}">${st_.text}</span>${clipHTML(it)}</div></div></div>
+      <div class="ic-meta"><span class="badge ${st_.cls}">${st_.label}</span><span class="due-text ${st_.urgent ? 'urgent' : ''}">${st_.text}</span>${bankTagHTML(it)}${clipHTML(it)}</div></div></div>
       <div class="ic-amt"><div class="amt">${fmtMoney(it.amount)}</div><div class="per">/ ${perLabel(ev(it))}</div></div></div>
     ${middle}
     <div class="ic-foot"><div class="figs">${figs}</div><div class="actions">
@@ -287,6 +289,7 @@ function swatchesHTML(selected){
   return Object.entries(PALETTES).map(([k, p], i) => `<button class="swatch ${selected === k ? 'sel' : ''}" data-pal="${k}" style="${swatchStyle(k, theme)};--i:${i}" aria-label="${esc(p.name)} colours" aria-pressed="${selected === k}"><span class="sw-check">${ICON.check}</span></button>`).join('');
 }
 function renderProfile(){
+  renderBanks();
   $('#catGrid').innerHTML = st().cats.map((c, i) => {
     const n = st().items.filter(it => it.catId === c.id && it.status === 'active').length;
     return `<button class="cat-card" data-cat="${c.id}" style="--accent:${catColor(c)};--i:${i}"><span class="cat-edit">${ICON.edit}</span><span class="glyph">${glyphHTML(c)}</span>
@@ -347,6 +350,7 @@ function go(p){
   requestAnimationFrame(moveAllThumbs);
 }
 export function handleBack(){
+  if(forcedUpdate) return true;
   if(handleBackInOverlays()) return true;
   if(page !== 'home'){ go('home'); return true; }
   return false;
@@ -481,6 +485,7 @@ function openBillSheet(it){
   $('#bName').value = it ? it.name : '';
   setSelect('bCat', it && cat(it.catId) ? it.catId : (billCats()[0]?.id || ''));
   setSelect('bEvery', String(it ? ev(it) : 1));
+  fillBankSelect(it?.bankId);
   setNum('bAmt', it ? it.amount : '');
   setSwitch('bOngoing', it ? it.ongoing : false);
   setNum('bTen', it && !it.ongoing ? it.tenureTotal : '');
@@ -499,7 +504,7 @@ function openBillSheet(it){
 async function saveBill(){
   clearForm('billSheet');
   const name = $('#bName').value.trim(), catId = $('#bCat').value, amt = num($('#bAmt').value), ongoing = isOn('bOngoing'), every = num($('#bEvery').value) || 1;
-  const ten = num($('#bTen').value), paidM = num($('#bPaidM').value || 0), due = $('#bDue').value;
+  const ten = num($('#bTen').value), paidM = num($('#bPaidM').value || 0), due = $('#bDue').value, bankId = $('#bBank').value || null;
   let bad = 0;
   bad += setInvalid('bNameG', !name);
   bad += setInvalid('bAmtG', !(amt >= 1 && amt <= 1e8));
@@ -518,7 +523,7 @@ async function saveBill(){
     const id = editingBill.id;
     commit(() => {
       const x = findItem(id), paidMonths = x.ongoing ? 0 : x.tenureTotal - x.tenureLeft;
-      Object.assign(x, { name, catId, amount:amt, every, ongoing, due, anchorDay:parseISO(due).getDate(), reminders:rem, files });
+      Object.assign(x, { name, catId, amount:amt, every, ongoing, due, anchorDay:parseISO(due).getDate(), reminders:rem, files, bankId });
       if(ongoing){ x.tenureTotal = null; x.tenureLeft = null; } else { x.tenureTotal = ten; x.tenureLeft = ten - paidMonths; }
     }, { type:'success', title:'Changes saved', body:name });
     afterSave();
@@ -526,7 +531,7 @@ async function saveBill(){
   } else {
     const id = uid();
     commit(() => {
-      const b = { id, kind:'bill', catId, name, amount:amt, every, ongoing, tenureTotal: ongoing ? null : ten, tenureLeft: ongoing ? null : ten - paidM,
+      const b = { id, kind:'bill', catId, name, amount:amt, every, ongoing, bankId, tenureTotal: ongoing ? null : ten, tenureLeft: ongoing ? null : ten - paidM,
         paid: ongoing ? 0 : amt * paidM, due, anchorDay: parseISO(due).getDate(), reminders:rem, lastPaid:null, history:[], status:'active', files };
       if(!ongoing && paidM > 0) b.history.push({ date:T, amount: amt * paidM, n: paidM, opening:true });
       st().items.push(b);
@@ -1059,23 +1064,161 @@ async function maybeAskNotify(){
 }
 
 /* ================================================================
-   UPDATES
+   BANK ACCOUNTS
 ================================================================ */
-function showUpdateBanner(latest){
-  $('#updateSlot').innerHTML = `<div class="update-banner"><div class="u-ic">${ICON.download}</div><div><div class="u-t">Update available</div><div class="u-s">Version ${esc(latest)} is ready to install</div></div><button class="btn btn-primary btn-sm" id="getUpdate">Get it</button></div>`;
-  $('#getUpdate').addEventListener('click', () => openExternal(APK_URL));
+const banks = () => st().settings.banks || [];
+const bankById = id => banks().find(b => b.id === id);
+const bankLabel = b => `${shortName(b.name)} ${maskAcct(b.acct)}`;
+function bankInitials(b){
+  const s = shortName(b.name).replace(/[^A-Za-z0-9& ]/g, '');
+  const words = s.split(/\s+/).filter(Boolean);
+  if(s.length <= 5) return s;
+  return words.length > 1 ? words.slice(0, 3).map(w => w[0]).join('').toUpperCase() : s.slice(0, 3).toUpperCase();
 }
-async function autoUpdateCheck(){
-  try{
-    const lastCheck = Number(localStorage.getItem('finly-update-check') || 0);
-    if(Date.now() - lastCheck < 12 * 3600e3 || !navigator.onLine) return;
-    localStorage.setItem('finly-update-check', String(Date.now()));
-    const r = await checkForUpdate();
-    if(r.available){
-      showUpdateBanner(r.latest);
-      if(localStorage.getItem('finly-update-told') !== r.latest){ localStorage.setItem('finly-update-told', r.latest); toast({ type:'success', title:`Update ${r.latest} available`, body:'Open Profile to install it.', ms:6000 }); }
-    }
-  }catch{ /* offline or rate-limited: try again later */ }
+const bankIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 10h18L12 4 3 10ZM5 10v8M19 10v8M9.5 10v8M14.5 10v8M3 20h18"/></svg>';
+function renderBanks(){
+  $('#bankList').innerHTML = banks().length ? banks().map((b, i) => `<button class="bank-row" data-bank="${b.id}" style="animation-delay:${i * 40}ms"><span class="bank-badge">${esc(bankInitials(b))}</span>
+      <span style="min-width:0;flex:1"><span class="bank-name">${esc(b.name)}</span><span class="bank-sub">${maskAcct(b.acct)} · ${esc(b.ifsc)}${b.holder ? ' · ' + esc(b.holder) : ''}</span></span>
+      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg></button>`).join('')
+    : `<div class="empty" style="padding:20px">No bank accounts yet.<div class="empty-actions"><button class="btn btn-secondary btn-sm" data-add-bank>Add bank account</button></div></div>`;
+}
+function fillBankSelect(selected){
+  $('#bBank').innerHTML = `<option value="">Not set</option>` + banks().map(b => `<option value="${b.id}">${esc(bankLabel(b))}</option>`).join('') + `<option value="__add">+ Add bank account</option>`;
+  setSelect('bBank', selected && bankById(selected) ? selected : '');
+  $('#bBank').dataset.prev = $('#bBank').value;
+}
+
+let editingBank = null, onBankSaved = null;
+function openBankSheet(b, after){
+  editingBank = b || null; onBankSaved = after || null; clearForm('bankSheet');
+  $('#bkTitle').textContent = b ? 'Edit bank account' : 'Add bank account';
+  $('#bkBank').innerHTML = `<option value="">Choose your bank</option>` + BANK_GROUPS.map(([g, list]) => `<optgroup label="${esc(g)}">${list.map(([n]) => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</optgroup>`).join('')
+    + `<optgroup label="Not listed"><option value="${OTHER_BANK}">Other — type the name</option></optgroup>`;
+  const known = b && findBank(b.name);
+  setSelect('bkBank', b ? (known ? b.name : OTHER_BANK) : '');
+  $('#bkOther').value = b && !known ? b.name : '';
+  $('#bkOtherG').classList.toggle('hidden', $('#bkBank').value !== OTHER_BANK);
+  $('#bkHolder').value = b?.holder || '';
+  $('#bkAcct').value = b?.acct || '';
+  $('#bkIfsc').value = b?.ifsc || '';
+  $('#bkIfscHint').textContent = 'Printed on your cheque book or passbook.';
+  $('#bkDelete').classList.toggle('hidden', !b);
+  openSheet('bankSheet');
+}
+function onBankPicked(){
+  const v = $('#bkBank').value;
+  $('#bkOtherG').classList.toggle('hidden', v !== OTHER_BANK);
+  const known = findBank(v), ifsc = $('#bkIfsc');
+  if(known && (!ifsc.value || bankFromIfsc(ifsc.value)?.[0] !== v) && ifsc.value.length < 5) ifsc.value = known[2];
+  if(v === OTHER_BANK) setTimeout(() => $('#bkOther').focus(), 150);
+  ifscHint();
+}
+function ifscHint(){
+  const v = $('#bkIfsc').value, guess = bankFromIfsc(v), chosen = $('#bkBank').value;
+  $('#bkIfscHint').textContent = guess && chosen && chosen !== OTHER_BANK && guess[0] !== chosen ? `This IFSC looks like ${guess[0]}.` : 'Printed on your cheque book or passbook.';
+}
+function onIfscInput(){
+  const el = $('#bkIfsc'), clean = el.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11);
+  if(el.value !== clean) el.value = clean;
+  const guess = bankFromIfsc(clean);
+  if(guess && !$('#bkBank').value){ setSelect('bkBank', guess[0]); $('#bkOtherG').classList.add('hidden'); }
+  ifscHint();
+}
+function saveBank(){
+  clearForm('bankSheet');
+  const pick = $('#bkBank').value, name = pick === OTHER_BANK ? $('#bkOther').value.trim() : pick;
+  const acct = $('#bkAcct').value.replace(/\D/g, ''), ifsc = $('#bkIfsc').value.trim().toUpperCase(), holder = $('#bkHolder').value.trim();
+  let bad = setInvalid('bkBankG', !pick);
+  if(pick === OTHER_BANK) bad += setInvalid('bkOtherG', !name);
+  bad += setInvalid('bkAcctG', !/^\d{9,18}$/.test(acct), 'bkAcctErr', 'Enter 9 – 18 digits.');
+  bad += setInvalid('bkIfscG', !IFSC_RE.test(ifsc));
+  if(!bad && banks().some(b => b !== editingBank && b.name === name && b.acct === acct)) bad += setInvalid('bkAcctG', true, 'bkAcctErr', 'This account is already saved.');
+  if(bad){ showAlert('bkAlert', `Please fix ${bad} highlighted field${bad > 1 ? 's' : ''}.`); scrollToError('bankSheet'); return; }
+  const id = editingBank?.id || uid(), after = onBankSaved;
+  closeSheet('bankSheet');
+  commit(() => {
+    const list = st().settings.banks = [...banks()];
+    const rec = { id, name, acct, ifsc, holder };
+    const i = list.findIndex(b => b.id === id);
+    if(i > -1) list[i] = rec; else list.push(rec);
+  }, { type:'success', title: editingBank ? 'Bank account updated' : 'Bank account added', body:`${shortName(name)} ${maskAcct(acct)}` });
+  after && after(id);
+}
+function deleteBank(){
+  const b = editingBank; if(!b) return;
+  const used = st().items.filter(i => i.bankId === b.id).length;
+  if(used) return showAlert('bkAlert', `${used} EMI${used > 1 ? 's are' : ' is'} set to debit from this account. Change ${used > 1 ? 'them' : 'it'} first.`);
+  closeSheet('bankSheet');
+  confirmBox({ title:`Delete ${bankLabel(b)}?`, body:'You can undo right after.', onYes:() =>
+    commit(() => { st().settings.banks = banks().filter(x => x.id !== b.id); }, { type:'warning', title:'Bank account deleted', body:bankLabel(b) }) });
+}
+
+/* ================================================================
+   UPDATES — banner on Home, required updates block the app
+================================================================ */
+const UPD_KEY = 'finly-update-info';
+let updateInfo = null, forcedUpdate = false;
+const verParts = v => String(v || '').replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+const isNewer = v => { const a = verParts(v), b = verParts(APP_VERSION); for(let i = 0; i < 3; i++) if((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0); return false; };
+function loadUpdateInfo(){
+  try{ updateInfo = JSON.parse(localStorage.getItem(UPD_KEY) || 'null'); }catch{ updateInfo = null; }
+  if(updateInfo && !isNewer(updateInfo.latest)) updateInfo = null;
+}
+function updateBanner(where){
+  const v = esc(updateInfo.latest);
+  return `<div class="update-banner" data-where="${where}"><div class="u-ic">${ICON.download}</div><div style="flex:1;min-width:0"><div class="u-t">Update available · v${v}</div><div class="u-s">New features and fixes are ready to install.</div></div>
+    <div class="u-actions"><button class="btn btn-secondary btn-sm" data-upd="later">Later</button><button class="btn btn-primary btn-sm" data-upd="now">Update now</button></div></div>`;
+}
+function renderUpdate(){
+  const snoozedUntil = updateInfo ? Number(localStorage.getItem('finly-update-later-' + updateInfo.latest) || 0) : 0;
+  forcedUpdate = !!updateInfo?.required;
+  $('#homeUpdateSlot').innerHTML = updateInfo && !forcedUpdate && snoozedUntil < Date.now() ? updateBanner('home') : '';
+  $('#updateSlot').innerHTML = updateInfo && !forcedUpdate ? updateBanner('profile') : '';
+  const fu = $('#forceUpdate');
+  fu.classList.toggle('hidden', !forcedUpdate);
+  if(forcedUpdate){
+    $('#fuText').textContent = `Version ${updateInfo.latest} is a major update and is needed to keep using Finly. You're on ${APP_VERSION}.`;
+    $('#fuNote').textContent = navigator.onLine ? 'Your data stays safe — it\'s backed up to your account.' : 'Connect to the internet to download the update.';
+  }
+}
+function startUpdateDownload(){
+  openExternal(APK_URL);
+  if(!forcedUpdate) toast({ type:'success', title:'Downloading the update', body:'Open the downloaded file and tap Install. Your data stays as it is.', ms:7000 });
+}
+async function checkUpdates(force){
+  if(!navigator.onLine) return null;
+  const last = Number(localStorage.getItem('finly-update-check') || 0);
+  if(!force && Date.now() - last < 3600e3) return null;
+  localStorage.setItem('finly-update-check', String(Date.now()));
+  const r = await checkForUpdate();
+  updateInfo = r.available ? r : null;
+  localStorage.setItem(UPD_KEY, JSON.stringify(updateInfo));
+  renderUpdate();
+  return r;
+}
+function onUpdateClick(e){
+  const b = e.target.closest('[data-upd]'); if(!b) return;
+  if(b.dataset.upd === 'now') return startUpdateDownload();
+  localStorage.setItem('finly-update-later-' + updateInfo.latest, String(Date.now() + 24 * 3600e3));
+  const banner = b.closest('.update-banner');
+  if(banner?.dataset.where === 'home'){ banner.style.transition = 'opacity .25s, transform .25s'; banner.style.opacity = '0'; banner.style.transform = 'translateY(-8px)'; setTimeout(renderUpdate, 250); }
+  toast({ type:'success', title:'We\'ll remind you tomorrow', body:'You can update any time from Profile → About.', ms:3500 });
+}
+
+/* ---------- collapsible profile sections ---------- */
+function initAccordions(){
+  let closed = [];
+  try{ closed = JSON.parse(localStorage.getItem('finly-acc') || '[]'); }catch{ closed = []; }
+  $$('.acc').forEach(a => {
+    const t = $('.acc-toggle', a), set = shut => { a.classList.toggle('closed', shut); t.setAttribute('aria-expanded', String(!shut)); };
+    set(closed.includes(a.dataset.acc));
+    t.addEventListener('click', () => {
+      const shut = !a.classList.contains('closed'); set(shut);
+      closed = shut ? [...new Set([...closed, a.dataset.acc])] : closed.filter(k => k !== a.dataset.acc);
+      try{ localStorage.setItem('finly-acc', JSON.stringify(closed)); }catch{ /* private mode */ }
+      if(!shut) requestAnimationFrame(moveAllThumbs);
+    });
+  });
 }
 
 /* ================================================================
@@ -1084,7 +1227,7 @@ async function autoUpdateCheck(){
 let wired = false;
 function wire(){
   if(wired) return; wired = true;
-  $$('#billSheet select, #chitSheet select, #exportSheet select').forEach(enhanceSelect);
+  $$('#billSheet select, #chitSheet select, #exportSheet select, #bankSheet select').forEach(enhanceSelect);
   billRem = makeReminderPicker($('#bRem'), () => { billRemTouched = true; billRem.setNote('Custom for this entry'); });
   chitRem = makeReminderPicker($('#cRem'), () => { chitRemTouched = true; chitRem.setNote('Custom for this chit'); });
   catRem = makeReminderPicker($('#catRem'));
@@ -1177,10 +1320,26 @@ function wire(){
   $('#syncNowBtn').addEventListener('click', () => { if(!syncStatus().online) return toast({ type:'warning', title:'You\'re offline', body:'Changes are saved on this phone and will upload when you reconnect.' }); runSync(); });
   $('#checkUpdateBtn').addEventListener('click', async () => {
     const btn = $('#checkUpdateBtn'); setBusy(btn, true, 'Checking…');
-    try{ const r = await checkForUpdate(); setBusy(btn, false);
-      if(r.available){ showUpdateBanner(r.latest); toast({ type:'success', title:`Version ${r.latest} is available`, body:'Tap "Get it" to download.' }); }
-      else toast({ type:'success', title:'You\'re up to date', body:`Version ${APP_VERSION}` });
+    try{ const r = await checkUpdates(true); setBusy(btn, false);
+      if(!r) toast({ type:'warning', title:'You\'re offline', body:'Connect to the internet to check for updates.' });
+      else if(!r.available) toast({ type:'success', title:'You\'re up to date', body:`Version ${APP_VERSION}` });
     }catch{ setBusy(btn, false); toast({ type:'error', title:'Couldn\'t check for updates', body:'Check your internet connection and try again.' }); }
+  });
+  ['#homeUpdateSlot', '#updateSlot'].forEach(s => $(s).addEventListener('click', onUpdateClick));
+  $('#fuGo').addEventListener('click', startUpdateDownload);
+  initAccordions();
+  $('#newBankBtn').addEventListener('click', () => openBankSheet(null));
+  $('#bankList').addEventListener('click', e => { if(e.target.closest('[data-add-bank]')) return openBankSheet(null); const r = e.target.closest('[data-bank]'); if(r) openBankSheet(bankById(r.dataset.bank)); });
+  $('#bkBank').addEventListener('change', onBankPicked);
+  $('#bkIfsc').addEventListener('input', onIfscInput);
+  $('#bkAcct').addEventListener('input', e => { const c = e.target.value.replace(/\D/g, '').slice(0, 18); if(c !== e.target.value) e.target.value = c; });
+  $('#bkSave').addEventListener('click', saveBank);
+  $('#bkDelete').addEventListener('click', deleteBank);
+  $('#bBank').addEventListener('change', () => {
+    const s_ = $('#bBank');
+    if(s_.value !== '__add'){ s_.dataset.prev = s_.value; return; }
+    setSelect('bBank', s_.dataset.prev || '');
+    openBankSheet(null, id => { fillBankSelect(id); });
   });
   $('#logoutRow').addEventListener('click', () => {
     const n = pendingCount();
@@ -1210,7 +1369,8 @@ export function startApp(u, { logout }){
   applySettings(); go('home'); render(); layoutFab();
   scheduleReminders(reminderPlan);
   scheduleSync(400);
-  setTimeout(autoUpdateCheck, 3000);
+  loadUpdateInfo(); renderUpdate();
+  setTimeout(() => checkUpdates(true).catch(() => {}), 2500);
   const day = localStorage.getItem('finly-due-toast');
   const a = computeAlerts().filter(x => x.d <= 1);
   if(a.length && day !== T){
@@ -1220,6 +1380,6 @@ export function startApp(u, { logout }){
 }
 export function onResumeApp(){
   if(!store.uid) return;
-  refreshToday(); render(); scheduleReminders(reminderPlan); scheduleSync(300); autoUpdateCheck();
+  refreshToday(); render(); scheduleReminders(reminderPlan); scheduleSync(300); checkUpdates(false).catch(() => {});
 }
 export { swatchesHTML };

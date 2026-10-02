@@ -25,10 +25,12 @@ jobs:
       VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
       VITE_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
       VITE_GITHUB_REPO: ${{ github.repository }}
-      VITE_APP_VERSION: 1.0.${{ github.run_number }}
       VERSION_CODE: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Work out version (major.minor from package.json + build number)
+        run: echo "VITE_APP_VERSION=$(node -p "require('./package.json').version.split('.').slice(0,2).join('.')").${{ github.run_number }}" >> "$GITHUB_ENV"
 
       - name: Check server settings
         if: github.event_name == 'push' || inputs.publish

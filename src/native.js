@@ -113,6 +113,8 @@ export async function checkForUpdate(){
   const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers:{ Accept:'application/vnd.github+json' } });
   if(!r.ok) throw new Error('update check failed');
   const j = await r.json();
-  return { latest: j.tag_name?.replace(/^v/, ''), available: newer(j.tag_name, APP_VERSION) };
+  const latest = j.tag_name?.replace(/^v/, '');
+  const available = newer(latest, APP_VERSION);
+  return { latest, available, required: available && verNum(latest)[0] > verNum(APP_VERSION)[0] };
 }
 export function openExternal(url){ window.open(url, '_blank', 'noopener'); }

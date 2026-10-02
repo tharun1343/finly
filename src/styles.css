@@ -593,3 +593,47 @@ input[type=date]::-webkit-calendar-picker-indicator{ filter: invert(.75); cursor
 .rounds-total b{ color:var(--text); }
 .metric .m-edit{ margin-top:6px; display:inline-flex; align-items:center; gap:4px; border:none; background:none; color:var(--primary-2); font-weight:700; font-size:var(--t-2xs); padding:0; cursor:pointer; }
 .metric .m-edit svg{ width:11px; height:11px; }
+
+/* ---------- dropdown: groups + search ---------- */
+.dd-menu.searchable{ padding-top:0; }
+.dd-search{ position:sticky; top:0; z-index:1; background:var(--bg-elev); padding:8px 2px 6px; }
+.dd-search input{ width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--glass-border); background:var(--glass-strong); color:var(--text); font-size:16px; font-family:inherit; -webkit-appearance:none; appearance:none; }
+.dd-search input:focus{ outline:none; border-color:var(--primary); }
+.dd-group{ font-size:var(--t-2xs); font-weight:800; text-transform:uppercase; letter-spacing:.6px; color:var(--text-faint); padding:10px 12px 4px; }
+.dd-empty{ font-size:var(--t-sm); color:var(--text-dim); padding:14px 12px; text-align:center; }
+
+/* ---------- collapsible profile sections ---------- */
+.acc{ margin-top:8px; }
+.acc-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin:14px 0 10px; }
+.acc-toggle{ display:flex; align-items:center; gap:8px; background:none; border:none; cursor:pointer; padding:6px 0; color:var(--text); flex:1; text-align:left; min-width:0; }
+.acc-chev{ width:18px; height:18px; color:var(--text-dim); transition: transform .35s var(--spring); flex-shrink:0; }
+.acc.closed .acc-chev{ transform:rotate(-90deg); }
+.acc-body{ display:grid; grid-template-rows:1fr; transition: grid-template-rows .4s var(--spring), opacity .3s ease; }
+.acc.closed .acc-body{ grid-template-rows:0fr; opacity:0; }
+.acc-inner{ overflow:hidden; min-height:0; }
+.acc.closed .acc-head .section-link{ opacity:.0; pointer-events:none; }
+.acc-head .section-link{ transition: opacity .25s; }
+
+/* ---------- bank accounts ---------- */
+.bank-list{ display:flex; flex-direction:column; gap:8px; }
+.bank-row{ display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:var(--radius-sm); background:var(--glass); border:1px solid var(--glass-border); width:100%; text-align:left; cursor:pointer; transition: transform .2s var(--bounce); animation: riseIn .35s var(--spring) both; }
+.bank-row:active{ transform:scale(.98); }
+.bank-badge{ width:40px; height:40px; border-radius:12px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:var(--t-xs); font-weight:800; letter-spacing:.3px; color:var(--primary-2); background:var(--primary-dim); }
+.bank-name{ font-size:var(--t-base); font-weight:700; color:var(--text); display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bank-sub{ font-size:var(--t-xs); color:var(--text-dim); margin-top:2px; display:block; font-variant-numeric:tabular-nums; letter-spacing:.2px; }
+.bank-row .chev{ margin-left:auto; width:16px; height:16px; color:var(--text-faint); flex-shrink:0; }
+.bank-tag{ display:inline-flex; align-items:center; gap:4px; font-size:var(--t-2xs); font-weight:700; color:var(--text-dim); background:var(--glass-strong); padding:2px 7px; border-radius:6px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.bank-tag svg{ width:11px; height:11px; }
+
+/* ---------- update banner + required update ---------- */
+.update-banner{ flex-wrap:wrap; }
+.update-banner .u-actions{ display:flex; gap:8px; width:100%; margin-top:2px; }
+.update-banner .u-actions .btn{ margin-left:0; flex:1; }
+.force-update{ position:fixed; inset:0; z-index:300; display:flex; align-items:center; justify-content:center; padding:24px; background:
+  radial-gradient(700px 400px at 20% 0%, color-mix(in srgb, var(--primary) 18%, transparent), transparent 60%), var(--bg); animation: fadeIn .35s ease both; }
+.fu-card{ width:100%; max-width:360px; text-align:center; }
+.fu-mark{ width:76px; height:76px; border-radius:22px; margin:0 auto 22px; box-shadow:0 18px 40px -12px rgba(6,10,23,.8); }
+.fu-card h1{ font-size:var(--t-2xl); font-weight:800; margin-bottom:8px; }
+.fu-card p{ font-size:var(--t-base); color:var(--text-dim); line-height:1.6; margin-bottom:22px; }
+.fu-card .fu-note{ font-size:var(--t-xs); color:var(--text-faint); margin:14px 0 0; }
+@keyframes fadeIn{ from{ opacity:0; } to{ opacity:1; } }

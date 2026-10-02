@@ -52,7 +52,7 @@ export function initSheets(){
   $$('.sheet-overlay').forEach(o => {
     o.addEventListener('click', e => { if(e.target === o) closeSheet(o.id); });
     const sc = $('.sheet-scroll', o);
-    if(sc){ sc.addEventListener('scroll', () => { footShadow(o); closeDropdown(); }, { passive:true }); new ResizeObserver(() => footShadow(o)).observe(sc); sc.addEventListener('input', () => footShadow(o)); }
+    if(sc){ sc.addEventListener('scroll', () => footShadow(o), { passive:true }); new ResizeObserver(() => footShadow(o)).observe(sc); sc.addEventListener('input', () => footShadow(o)); }
     const top = $('.sheet-top', o), sheet = $('.sheet', o);
     let y0 = 0, t0 = 0, dy = 0, dragging = false;
     top.addEventListener('pointerdown', e => { if(e.target.closest('button')) return; dragging = true; y0 = e.clientY; t0 = performance.now(); dy = 0; sheet.style.transition = 'none'; top.setPointerCapture(e.pointerId); });
@@ -155,30 +155,55 @@ export function enhanceSelect(sel){
 export function setSelect(id, v){ const s = $('#' + id); s.value = v; s._dd && s._dd.sync(); }
 function openDropdown(sel){
   closeDropdown();
-  const btn = sel._dd.btn, r = btn.getBoundingClientRect();
-  const menu = document.createElement('div'); menu.className = 'dd-menu'; menu.setAttribute('role', 'listbox');
-  menu.innerHTML = Array.from(sel.options).map((o, i) => `<button type="button" role="option" class="dd-opt ${i === sel.selectedIndex ? 'sel' : ''}" data-i="${i}" aria-selected="${i === sel.selectedIndex}" style="--i:${i}"><span class="dd-l">${esc(o.textContent)}${o.dataset.hint ? `<small>${esc(o.dataset.hint)}</small>` : ''}</span><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6 9 17l-5-5"/></svg></button>`).join('');
+  const btn = sel._dd.btn, searchable = sel.dataset.search === 'true';
+  const menu = document.createElement('div'); menu.className = 'dd-menu' + (searchable ? ' searchable' : ''); menu.setAttribute('role', 'listbox');
+  let i = 0, html = '';
+  const opt = o => { const k = i++; return `<button type="button" role="option" class="dd-opt ${k === sel.selectedIndex ? 'sel' : ''}" data-i="${k}" data-q="${esc(o.textContent.toLowerCase())}" aria-selected="${k === sel.selectedIndex}" style="--i:${Math.min(k, 12)}"><span class="dd-l">${esc(o.textContent)}${o.dataset.hint ? `<small>${esc(o.dataset.hint)}</small>` : ''}</span><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6 9 17l-5-5"/></svg></button>`; };
+  for(const ch of sel.children){
+    if(ch.tagName === 'OPTGROUP') html += `<div class="dd-group" data-group>${esc(ch.label)}</div>` + Array.from(ch.children).map(opt).join('');
+    else html += opt(ch);
+  }
+  menu.innerHTML = (searchable ? `<div class="dd-search"><input type="search" placeholder="Search…" autocomplete="off" aria-label="Search"></div>` : '') + `<div class="dd-list">${html}</div><div class="dd-empty hidden">No matches</div>`;
   document.body.appendChild(menu);
-  const w = Math.max(r.width, 200), h = Math.min(menu.scrollHeight, 300), below = innerHeight - r.bottom, up = below < h + 16 && r.top > below;
-  menu.style.width = w + 'px';
-  menu.style.left = Math.min(Math.max(8, r.left), innerWidth - w - 8) + 'px';
-  menu.style.top = (up ? r.top - h - 6 : r.bottom + 6) + 'px';
-  if(up) menu.classList.add('up');
+  const place = () => {
+    const r = btn.getBoundingClientRect(), vh = window.visualViewport?.height || innerHeight;
+    const w = Math.max(r.width, 220), below = vh - r.bottom - 12, above = r.top - 12;
+    const up = below < 240 && above > below;
+    const h = Math.min(searchable ? 380 : 300, up ? above : below);
+    menu.style.width = w + 'px'; menu.style.maxHeight = h + 'px';
+    menu.style.left = Math.min(Math.max(8, r.left), innerWidth - w - 8) + 'px';
+    menu.style.top = (up ? r.top - Math.min(menu.scrollHeight, h) - 6 : r.bottom + 6) + 'px';
+    menu.classList.toggle('up', up);
+  };
+  place();
   btn.classList.add('open'); btn.setAttribute('aria-expanded', 'true');
   requestAnimationFrame(() => menu.classList.add('show'));
-  const opts = $$('.dd-opt', menu);
-  (opts[sel.selectedIndex] || opts[0])?.focus({ preventScroll:true });
+  const opts = () => $$('.dd-opt:not(.hidden)', menu);
+  const selected = $(`.dd-opt[data-i="${sel.selectedIndex}"]`, menu);
+  if(selected) selected.scrollIntoView({ block:'center' });
+  if(!matchMedia('(pointer: coarse)').matches) (searchable ? $('.dd-search input', menu) : (selected || opts()[0]))?.focus({ preventScroll:true });
+  if(searchable){
+    const inp = $('.dd-search input', menu);
+    inp.addEventListener('input', () => {
+      const q = inp.value.trim().toLowerCase();
+      $$('.dd-opt', menu).forEach(b => b.classList.toggle('hidden', !!q && !b.dataset.q.includes(q)));
+      $$('.dd-group', menu).forEach(g => { let n = g.nextElementSibling, any = false; while(n && !n.matches('.dd-group')){ if(!n.classList.contains('hidden')) any = true; n = n.nextElementSibling; } g.classList.toggle('hidden', !any); });
+      $('.dd-empty', menu).classList.toggle('hidden', opts().length > 0);
+    });
+    inp.addEventListener('keydown', e => { if(e.key === 'ArrowDown'){ e.preventDefault(); opts()[0]?.focus(); } if(e.key === 'Enter'){ e.preventDefault(); opts()[0]?.click(); } });
+  }
   menu.addEventListener('click', e => { const b = e.target.closest('.dd-opt'); if(!b) return;
-    sel.selectedIndex = Number(b.dataset.i); sel.dispatchEvent(new Event('change', { bubbles:true })); closeDropdown(); btn.focus(); });
+    sel.selectedIndex = Number(b.dataset.i); sel.dispatchEvent(new Event('change', { bubbles:true })); closeDropdown(); btn.focus({ preventScroll:true }); });
   menu.addEventListener('keydown', e => {
-    const i = opts.indexOf(document.activeElement);
-    if(e.key === 'ArrowDown'){ e.preventDefault(); opts[Math.min(opts.length - 1, i + 1)].focus(); }
-    else if(e.key === 'ArrowUp'){ e.preventDefault(); opts[Math.max(0, i - 1)].focus(); }
+    if(e.target.matches('.dd-search input')) return;
+    const list = opts(), k = list.indexOf(document.activeElement);
+    if(e.key === 'ArrowDown'){ e.preventDefault(); list[Math.min(list.length - 1, k + 1)]?.focus(); }
+    else if(e.key === 'ArrowUp'){ e.preventDefault(); if(k <= 0 && searchable) $('.dd-search input', menu).focus(); else list[Math.max(0, k - 1)]?.focus(); }
     else if(e.key === 'Tab') closeDropdown();
   });
   const outside = e => { if(!menu.contains(e.target) && !btn.contains(e.target)) closeDropdown(); };
   setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
-  ddOpen = { sel, menu, btn, outside };
+  ddOpen = { sel, menu, btn, outside, place };
 }
 export function closeDropdown(){
   if(!ddOpen) return;
@@ -187,8 +212,10 @@ export function closeDropdown(){
   btn.classList.remove('open'); btn.setAttribute('aria-expanded', 'false');
   menu.classList.remove('show'); setTimeout(() => menu.remove(), 220);
 }
-addEventListener('scroll', closeDropdown, { passive:true });
-addEventListener('resize', closeDropdown);
+addEventListener('scroll', e => { if(ddOpen && !ddOpen.menu.contains(e.target)) closeDropdown(); }, { passive:true, capture:true });
+const replace = () => ddOpen?.place();
+addEventListener('resize', replace);
+window.visualViewport?.addEventListener('resize', replace);
 
 /* ---------------- reminder picker (0–30 days before; never after) ---------------- */
 const offLabel = o => o === 0 ? 'On due date' : o === 1 ? '1 day before' : o === 7 ? '1 week before' : o + ' days before';
