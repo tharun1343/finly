@@ -23,9 +23,11 @@ export function storedUser(){
 
 export class AuthFailure extends Error { constructor(kind, msg){ super(msg); this.kind = kind; } }
 function classify(err){
-  const msg = String(err?.message || err || '');
-  if(err?.name === 'AuthRetryableFetchError' || /fetch|network|Failed to fetch|Load failed/i.test(msg) || err?.status === 0) return new AuthFailure('offline', 'You\'re offline. Connect to the internet and try again.');
-  if(err?.status === 429 || /rate limit|too many/i.test(msg)) return new AuthFailure('rate', 'Too many requests. Please wait a minute and try again.');
+  const msg = String(err?.message || err || ''), status = Number(err?.status) || 0;
+  if(!navigator.onLine || (!status && /fetch|network|load failed/i.test(msg))) return new AuthFailure('offline', 'You\'re offline. Connect to the internet and try again.');
+  if(status === 429 || /rate limit|too many/i.test(msg)) return new AuthFailure('rate', 'Too many requests. Please wait a minute and try again.');
+  if(/sending .*email|smtp|mail/i.test(msg)) return new AuthFailure('server', 'We couldn\'t send the code email. The app\'s email service needs attention — please try again later.');
+  if(status >= 500 || !status) return new AuthFailure('server', `The server couldn't be reached properly (${status || 'no response'}). Please try again in a minute.`);
   if(err?.code === 'otp_expired' || /expired|invalid/i.test(msg)) return new AuthFailure('invalid', 'That code is wrong or has expired.');
   return new AuthFailure('other', msg || 'Something went wrong. Please try again.');
 }

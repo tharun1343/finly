@@ -93,7 +93,7 @@ async function verify(code){
   }catch(e){
     const row = $('#otpRow'); row.classList.remove('shake'); void row.offsetWidth; row.classList.add('shake');
     boxes().forEach(b => { b.value = ''; b.classList.remove('filled'); });
-    if(e.kind === 'offline' || e.kind === 'rate'){
+    if(e.kind === 'offline' || e.kind === 'rate' || e.kind === 'server'){
       boxes().forEach(b => b.disabled = false); boxes()[0].focus(); otpStatus('err', e.message);
     } else {
       otp.tries++;
