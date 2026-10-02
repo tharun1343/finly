@@ -1,20 +1,22 @@
 import { T, dayNum, fmtDate, fmtAmt, fmtMoney, round2 } from './util.js';
 
-/** h = { cat, catLabel, itemPaid, itemRemaining, nextDue, histDesc } supplied by the app */
+/** h = { cat, catLabel, itemPaid, itemRemaining, nextDue, histDesc } supplied by the app.
+ *  Rows are grouped by commitment (in the order given), oldest payment first within each. */
 export function paymentRows(items, r, mf, h){
   const rows = [];
-  for(const it of items){
+  items.forEach((it, order) => {
     const c = h.cat(it.catId), isChit = it.kind === 'chit';
     for(const x of it.history || []){
       if(r.from && dayNum(x.date) < dayNum(r.from)) continue;
       if(r.to && dayNum(x.date) > dayNum(r.to)) continue;
       const desc = isChit ? `Round ${x.round} · ${h.histDesc(x, mf, false)}`
         : x.opening ? `Opening balance (${x.n} payments already made)` : it.ongoing ? 'Regular payment' : `Installment ${x.n} of ${it.tenureTotal}`;
-      rows.push({ date:x.date, name:it.name, cat: h.catLabel(it), type: isChit ? 'Chit fund' : it.ongoing ? 'Bill' : 'EMI',
-        status: it.status === 'active' ? 'Active' : 'Closed', desc, paid: isChit ? x.paid : x.amount, comm: isChit ? (x.share || 0) : 0, recv: isChit ? (x.received || 0) : 0 });
+      rows.push({ order, id:it.id, date:x.date, name:it.name, cat: h.catLabel(it), type: isChit ? 'Chit fund' : it.ongoing ? 'Bill' : 'EMI',
+        status: it.status === 'active' ? 'Active' : 'Closed', desc, paid: isChit ? x.paid : x.amount, comm: isChit ? (x.share || 0) : 0,
+        recv: isChit ? (x.received || 0) : 0, bid: isChit && x.type === 'taken' ? (x.bid || 0) : 0, late: x.lateFee || 0 });
     }
-  }
-  return rows.sort((a, b) => dayNum(a.date) - dayNum(b.date) || a.name.localeCompare(b.name));
+  });
+  return rows.sort((a, b) => a.order - b.order || dayNum(a.date) - dayNum(b.date));
 }
 
 export function summaryRow(it, h){
@@ -37,8 +39,8 @@ const toCSV = rows => '﻿' + rows.map(r => r.map(csvCell).join(',')).join('\r\n
 export function buildCsv(kind, items, r, h){
   if(kind === 'payments'){
     const rows = paymentRows(items, r, fmtMoney, h);
-    return toCSV([['Date', 'Commitment', 'Category', 'Type', 'Status', 'Details', 'Paid (INR)', 'Commission (INR)', 'Received (INR)'],
-      ...rows.map(p => [p.date, p.name, p.cat, p.type, p.status, p.desc, p.paid, p.comm, p.recv])]);
+    return toCSV([['Commitment', 'Category', 'Type', 'Status', 'Date', 'Details', 'Paid (INR)', 'Late fee (INR)', 'Commission (INR)', 'Your bid (INR)', 'Received (INR)'],
+      ...rows.map(p => [p.name, p.cat, p.type, p.status, p.date, p.desc, p.paid, p.late, p.comm, p.bid, p.recv])]);
   }
   return toCSV([['Commitment', 'Category', 'Type', 'Status', 'Amount (INR)', 'Per', 'Progress', 'Total paid (INR)', 'Remaining (INR)', 'Commission (INR)', 'Received (INR)', 'Next due / closed'],
     ...items.map(it => summaryRow(it, h)).map(s => [s.name, s.cat, s.type, s.status, s.amount, s.per, s.progress, s.paid, s.remaining, s.comm, s.recv, s.date])]);
@@ -85,18 +87,37 @@ export async function buildPdf(items, r, h, colors, user){
     body: sums.map(s => [`${s.name}\n${s.cat}`, s.type, s.status, s.progress, rs(s.paid), s.remaining ? rs(s.remaining) : '-']),
     columnStyles:{ 4:{ halign:'right' }, 5:{ halign:'right' } } });
 
+  // One payments table per commitment, so each item's history reads on its own.
   let y = doc.lastAutoTable.finalY + 30;
+  const heading = (title, sub) => {
+    if(y > H - 120){ doc.addPage(); y = 50; }
+    doc.setTextColor(30); doc.setFont('helvetica', 'bold'); doc.setFontSize(11.5); doc.text(title, 40, y);
+    if(sub){ doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(110); doc.text(sub, 40, y + 13); y += 13; }
+  };
   if(y > H - 90){ doc.addPage(); y = 50; }
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text('Payments', 40, y);
-  if(pays.length){
-    const anyRecv = pays.some(p => p.recv);
+  doc.setTextColor(30); doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text('Payments by commitment', 40, y); y += 24;
+  if(!pays.length){ doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(110); doc.text('No payments in this period.', 40, y - 4); }
+  items.forEach((it, i) => {
+    const rows = pays.filter(p => p.id === it.id), s = sums[i], isChit = it.kind === 'chit';
+    heading(it.name, [s.cat, s.type, s.status, s.progress].filter((v, k, a) => v && a.findIndex(x => x.toLowerCase() === v.toLowerCase()) === k).join(' · '));
+    if(!rows.length){ doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(130); doc.text('No payments in this period.', 40, y + 16); y += 40; return; }
+    const sum = k => rows.reduce((t, p) => t + p[k], 0);
+    const anyLate = rows.some(p => p.late), anyBid = rows.some(p => p.bid), anyRecv = rows.some(p => p.recv);
+    const cols = [['Date', p => fmtDate(p.date)], ['Details', p => p.desc], ['Paid', p => rs(p.paid), 'paid'],
+      ...(anyLate ? [['Late fee', p => p.late ? rs(p.late) : '-', 'late']] : []),
+      ...(isChit ? [['Commission', p => p.comm ? rs(p.comm) : '-', 'comm']] : []),
+      ...(anyBid ? [['Your bid', p => p.bid ? rs(p.bid) : '-', 'bid']] : []),
+      ...(anyRecv ? [['Received', p => p.recv ? rs(p.recv) : '-', 'recv']] : [])];
+    const money = { halign:'right', cellWidth: cols.length > 4 ? 62 : 80, overflow:'visible' };
+    const right = Object.fromEntries(cols.map((c, k) => [k, k >= 2 ? money : {}]));
     autoTable(doc, { ...base, startY: y + 8,
-      head:[['Date', 'Commitment', 'Details', 'Paid', 'Commission', ...(anyRecv ? ['Received'] : [])]],
-      body: pays.map(p => [fmtDate(p.date), p.name, p.desc, rs(p.paid), p.comm ? rs(p.comm) : '-', ...(anyRecv ? [p.recv ? rs(p.recv) : '-'] : [])]),
-      foot:[['', '', 'Total', rs(pays.reduce((s, p) => s + p.paid, 0)), rs(pays.reduce((s, p) => s + p.comm, 0)), ...(anyRecv ? [rs(pays.reduce((s, p) => s + p.recv, 0))] : [])]],
+      head:[cols.map(c => c[0])],
+      body: rows.map(p => cols.map(c => c[1](p))),
+      foot:[cols.map((c, k) => k === 1 ? `Total · ${rows.length} payment${rows.length === 1 ? '' : 's'}` : c[2] ? { content: rs(sum(c[2])), styles:{ halign:'right' } } : '')],
       footStyles:{ fillColor:tint(brand, .88), textColor:[30, 34, 50], fontStyle:'bold' }, showFoot:'lastPage',
-      columnStyles:{ 0:{ cellWidth:70 }, 3:{ halign:'right' }, 4:{ halign:'right' }, 5:{ halign:'right' } } });
-  } else { doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(110); doc.text('No payments in this period.', 40, y + 20); }
+      columnStyles:{ ...right, 0:{ cellWidth:70 } } });
+    y = doc.lastAutoTable.finalY + 26;
+  });
 
   const n = doc.internal.getNumberOfPages();
   for(let i = 1; i <= n; i++){

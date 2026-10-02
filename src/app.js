@@ -1,5 +1,5 @@
 import { $, $$, esc, ICON, T, refreshToday, parseISO, toISO, addDays, addMonths, dayNum, diffDays, fmtDate, fmtShort, fmtMonth, fmtMoney, round2, uid, clone, num, isInt, reduceMotion, ago } from './util.js';
-import { PALETTES, TOKEN_MAP, paletteVars, swatchStyle } from './palettes.js';
+import { PALETTES, TOKEN_MAP, paletteVars, swatchStyle, palKey } from './palettes.js';
 import { store, commitState, replaceState, onSyncStatus, syncStatus, scheduleSync, runSync, onRemoteChanges, pendingCount, queueFileDelete, clearFileDelete, dueFileDeletes, onAfterSync } from './data.js';
 import { MAX_FILES, prepareFile, putLocal, thumbUrl, openAttachment, openBlob, syncFiles, FileError } from './files.js';
 import { toast, layoutFab, openSheet, closeSheet, confirmBox, setInvalid, showAlert, clearForm, scrollToError, setBusy, bindSwitch, setSwitch, isOn,
@@ -35,7 +35,7 @@ const alertWindow = it => Math.max(7, ...effReminders(it));
 const paidRecently = it => it.kind === 'bill' && !!it.lastPaid && diffDays(T, it.due) > alertWindow(it);
 const itemPaid = it => it.kind === 'chit' ? it.paidIn : it.paid;
 const itemRemaining = it => it.status !== 'active' ? 0 : it.kind === 'chit' ? (it.taken ? it.installment * (it.members - it.roundsDone) : 0) : (it.ongoing ? 0 : it.amount * it.tenureLeft);
-const catColor = c => { const cs = (PALETTES[st().settings.palette] || PALETTES.sapphire).cats, col = cs[((c?.ci ?? 0) % cs.length + cs.length) % cs.length];
+const catColor = c => { const cs = PALETTES[palKey(st().settings.palette)].cats, col = cs[((c?.ci ?? 0) % cs.length + cs.length) % cs.length];
   return st().settings.theme === 'light' ? `color-mix(in srgb, ${col} 68%, #1d2233)` : col; };
 const subOf = it => it?.subId ? (cat(it.catId)?.subs || []).find(x => x.id === it.subId) : null;
 const catLabel = it => { const c = cat(it.catId), sb = subOf(it); return [c?.name, sb?.name].filter(Boolean).join(' · '); };
@@ -151,7 +151,7 @@ function billCard(it, i){
     ${middle}
     <div class="ic-foot"><div class="figs">${figs}</div><div class="actions">
       <button class="round-btn ghost" data-act="edit" aria-label="Edit ${esc(it.name)}">${ICON.edit}</button>
-      <button class="round-btn ${recent ? 'paid' : 'pay'}" data-act="pay" aria-label="${recent ? 'Paid this cycle' : 'Mark as paid'}">${ICON.check}</button></div></div>
+      <button class="pay-btn ${recent ? 'paid' : ''}" data-act="pay" aria-label="${recent ? 'Paid this cycle' : 'Mark as paid'}">${ICON.check}<span>${recent ? 'Paid' : 'Mark as paid'}</span></button></div></div>
   </article>`;
 }
 function chitCompact(it, i){
@@ -168,7 +168,7 @@ function chitCompact(it, i){
       ${taken ? `<div class="fig"><span class="fig-label">Still owe</span><span class="fig-value neg">${fmtMoney(it.installment * (it.members - it.roundsDone))}</span></div>`
               : `<div class="fig"><span class="fig-label">Commission</span><span class="fig-value pos">+${fmtMoney(it.commission)}</span></div>`}</div>
       <div class="actions"><button class="round-btn ghost" data-act="edit" aria-label="Edit ${esc(it.name)}">${ICON.edit}</button>
-      <button class="round-btn pay" data-act="pay" aria-label="Record round ${r}">${ICON.check}</button></div></div>
+      <button class="pay-btn" data-act="pay" aria-label="Mark round ${r} as paid">${ICON.check}<span>Mark as paid</span></button></div></div>
   </article>`;
 }
 
@@ -194,8 +194,9 @@ function avatarHTML(){
 }
 function renderAvatar(){
   const a = st().settings.avatar, kind = a?.type === 'photo' ? 'photo' : a?.type === 'emoji' ? 'emoji' : 'letter';
-  $('#pfAvatarFace').innerHTML = avatarHTML();
-  $('#pfAvatar').dataset.kind = kind;
+  const face = avatarHTML();
+  $('#pfAvatarFace').innerHTML = face; $('#hdrAvatarFace').innerHTML = face;
+  $('#pfAvatar').dataset.kind = kind; $('#hdrAvatar').dataset.kind = kind;
 }
 
 function renderHome(){
@@ -268,8 +269,8 @@ function chitDetail(it, i){
     metrics = `<div class="metric"><div class="fig-label">Received</div><div class="fig-value">${fmtMoney(it.taken.received)}</div><div class="fig-sub">Round ${it.taken.round} · bid ${fmtMoney(it.taken.bid)}</div></div>
       <div class="metric"><div class="fig-label">Still owe</div><div class="fig-value neg">${fmtMoney(owe)}</div><div class="fig-sub">${left} round${left === 1 ? '' : 's'} × ${fmtMoney(it.installment)}</div></div>
       <div class="metric"><div class="fig-label">Next due${announced(it) ? ' · announced' : ''}</div><div class="fig-value">${fmtDate(due)}</div><div class="fig-sub">Round ${r} of ${it.members}</div>${dateBtn}</div>
-      <div class="metric"><div class="fig-label">${net >= 0 ? 'Projected gain' : 'Projected cost'}</div><div class="fig-value ${net >= 0 ? 'pos' : 'neg'}">${fmtMoney(Math.abs(net))}</div><div class="fig-sub">Received − total you'll pay</div></div>`;
-    note = `You took the pot in round ${it.taken.round}. You now pay the full ${fmtMoney(it.installment)} every round until it ends — counted as debt.`;
+      <div class="metric"><div class="fig-label">${net >= 0 ? 'Projected gain' : 'Projected cost'}</div><div class="fig-value ${net >= 0 ? 'pos' : 'neg'}">${fmtMoney(Math.abs(net))}</div><div class="fig-sub">${it.commission ? `Incl. +${fmtMoney(it.commission)} commission` : 'Received − total you\'ll pay'}</div></div>`;
+    note = `You took the pot in round ${it.taken.round} with a bid of ${fmtMoney(it.taken.bid)}. You now pay the full ${fmtMoney(it.installment)} every round until it ends — counted as debt.${it.commission ? ` Before that you earned ${fmtMoney(it.commission)} in commission.` : ''}`;
   } else {
     metrics = `<div class="metric"><div class="fig-label">Paid in</div><div class="fig-value">${fmtMoney(it.paidIn)}</div><div class="fig-sub">${it.roundsDone} round${it.roundsDone === 1 ? '' : 's'}</div></div>
       <div class="metric"><div class="fig-label">Commission so far</div><div class="fig-value pos">+${fmtMoney(it.commission)}</div><div class="fig-sub">Your share of winning bids</div></div>
@@ -285,7 +286,7 @@ function chitDetail(it, i){
     <div class="progress-row"><div class="progress-labels"><span>Rounds <b>${it.roundsDone} of ${it.members}</b></span><span>${Math.round(it.roundsDone / it.members * 100)}%</span></div>${barHTML('w_' + it.id, Math.round(it.roundsDone / it.members * 100))}</div>
     <div class="metric-grid">${metrics}</div>
     <div class="chit-actions">
-      <button class="btn btn-primary btn-grow" data-act="pay">${ICON.check}Record round ${r}</button>
+      <button class="btn btn-primary btn-grow nowrap" data-act="pay" aria-label="Mark round ${r} as paid">${ICON.check}Mark as paid</button>
       <button class="round-btn ghost" data-act="edit" aria-label="Edit">${ICON.edit}</button>
       <button class="round-btn ghost" data-act="hist" aria-label="Show history">${ICON.history}</button>
       <button class="round-btn ghost" data-export="${it.id}" aria-label="Export ${esc(it.name)}">${ICON.download}</button></div>
@@ -312,7 +313,7 @@ function renderWallet(){
 }
 
 function swatchesHTML(selected){
-  const theme = st().settings.theme;
+  const theme = st().settings.theme; selected = palKey(selected);
   return Object.entries(PALETTES).map(([k, p], i) => `<button class="swatch ${selected === k ? 'sel' : ''}" data-pal="${k}" style="${swatchStyle(k, theme)};--i:${i}" aria-label="${esc(p.name)} colours" aria-pressed="${selected === k}"><span class="sw-check">${ICON.check}</span></button>`).join('');
 }
 function renderProfile(){
@@ -347,7 +348,7 @@ function renderSync(s = syncStatus()){
   $('#syncSub').textContent = `Last synced ${ago(s.lastSync)}`;
 }
 
-function render(){ renderHeader(); renderHome(); renderStats(); renderWallet(); renderProfile(); renderBell(); renderSync(); flushBars(); }
+function render(){ renderHeader(); renderHome(); renderStats(); renderWallet(); renderProfile(); renderBell(); renderSync(); flushBars(); queueFabCheck(); }
 
 export function applySettings(){
   const s = st().settings, root = document.documentElement, v = paletteVars(s.palette, s.theme);
@@ -373,7 +374,10 @@ function go(p){
   $$('.screen').forEach(s => { s.style.setProperty('--dir', dir); s.classList.toggle('active', s.id === 'screen-' + p); });
   $$('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === p));
   moveNavInd();
-  $('#fab').classList.toggle('fab-hidden', !(p === 'home' || p === 'wallet'));
+  const hasFab = p === 'home' || p === 'wallet';
+  $('#fab').classList.toggle('fab-hidden', !hasFab); $('#fab').classList.remove('fab-away');
+  $('#app').classList.toggle('has-fab', hasFab);
+  setTimeout(queueFabCheck, 450);
   window.scrollTo({ top:0, behavior: reduceMotion() ? 'auto' : 'smooth' });
   requestAnimationFrame(moveAllThumbs);
 }
@@ -397,6 +401,20 @@ function animateOut(id){
     els.forEach(el => el.classList.add('leaving')); seen.delete(id); seen.delete('w_' + id); setTimeout(res, 300); });
 }
 function flashCard(id){ $$(`[data-id="${id}"]`).forEach(el => { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }); }
+
+/** Where the + button rests (ignoring its hide animation), lifted above any toasts. */
+function fabRect(f){
+  const lift = parseFloat(String(f.style.translate || '').split(' ')[1]) || 0, top = f.offsetTop + lift;
+  return { left:f.offsetLeft, right:f.offsetLeft + f.offsetWidth, top, bottom: top + f.offsetHeight };
+}
+let queueFabCheck = () => {};
+function fabCheck(goingDown){
+  const f = $('#fab'); if(!f || f.classList.contains('fab-hidden')) return;
+  const r = fabRect(f), pad = 8;
+  const covers = $$('.screen.active [data-act], .screen.active [data-export]').some(b => { const q = b.getBoundingClientRect();
+    return q.width && q.right > r.left - pad && q.left < r.right + pad && q.bottom > r.top - pad && q.top < r.bottom + pad; });
+  f.classList.toggle('fab-away', goingDown || covers);
+}
 
 function onCardAction(e){
   const ex = e.target.closest('[data-export]'); if(ex) return openExport(ex.dataset.export);
@@ -665,6 +683,7 @@ function readRounds(){
     o.date = row.querySelector('[data-f="date"]').value;
     o.paid = row.querySelector('[data-f="paid"]').value;
     const c = row.querySelector('[data-f="comm"]'); if(c) o.comm = c.value;
+    const b = row.querySelector('[data-f="bid"]'); if(b) o.bid = b.value;
   });
 }
 function roundsMeta(){
@@ -683,12 +702,14 @@ function drawRounds(){
     const date = o.date || (s ? roundDate({ start:s, interval:iv }, r) : '');
     const comm = kind === 'auction' ? (o.comm ?? '') : '';
     const paid = o.paidTouched ? o.paid : (I > 0 ? fmtNumInput(String(round2(I - (num(comm) || 0))), true) : (o.paid || ''));
-    const tag = kind === 'agent' ? '<span class="tag agent">Agent\'s round</span>' : kind === 'taken' ? '<span class="tag taken">You took the pot</span>' : kind === 'full' ? '<span class="tag full">Full amount</span>' : '';
+    const tag = kind === 'agent' ? '<span class="tag agent">Agent\'s round</span>' : kind === 'taken' ? '<span class="tag taken">You took the pot · full amount</span>' : kind === 'full' ? '<span class="tag full">Full amount</span>' : '';
     html += `<div class="round-row" data-r="${r}"><div class="round-row-head"><span>Round ${r}</span>${tag}</div><div class="rr-grid">
       <div class="fgroup rr-date" id="rr${r}dG"><label>Date</label><input type="date" data-f="date" value="${date}" max="${T}"></div>
       <div class="fgroup" id="rr${r}pG"><label>You paid</label><div class="money-wrap"><input type="text" inputmode="decimal" data-money data-f="paid" value="${paid}" autocomplete="off"></div></div>
       ${kind === 'auction'
         ? `<div class="fgroup" id="rr${r}cG"><label>Commission</label><div class="money-wrap"><input type="text" inputmode="decimal" data-money data-f="comm" value="${comm}" placeholder="0" autocomplete="off"></div></div>`
+        : kind === 'taken'
+        ? `<div class="fgroup" id="rr${r}bG"><label>Your bid <span class="req">*</span></label><div class="money-wrap"><input type="text" inputmode="decimal" data-money data-f="bid" value="${o.bid ?? ''}" placeholder="10,000" autocomplete="off"></div></div>`
         : `<div class="fgroup"><label>Commission</label><div class="money-wrap"><input type="text" value="0" disabled></div></div>`}
     </div></div>`;
   }
@@ -699,10 +720,12 @@ function drawRounds(){
 }
 function roundsTotal(){
   readRounds();
-  const { count } = roundsMeta();
+  const { count, af, takenR } = roundsMeta(), pot = num($('#cPot').value);
   let paid = 0, comm = 0;
-  for(let i = 0; i < count; i++){ paid += num(roundRows[i]?.paid) || 0; comm += num(roundRows[i]?.comm) || 0; }
-  $('#cRoundsTotal').innerHTML = count ? `${count} round${count === 1 ? '' : 's'} · you paid <b>${fmtMoney(paid)}</b> · commission <b>${fmtMoney(comm)}</b>` : '';
+  for(let i = 0; i < count; i++){ paid += num(roundRows[i]?.paid) || 0; if(rowKind(i + 1, af, takenR) === 'auction') comm += num(roundRows[i]?.comm) || 0; }
+  const bid = takenR && takenR <= count ? num(roundRows[takenR - 1]?.bid) : NaN;
+  $('#cRoundsTotal').innerHTML = count ? `${count} round${count === 1 ? '' : 's'} · you paid <b>${fmtMoney(paid)}</b><br>Total commission <b class="pos">+${fmtMoney(comm)}</b>`
+    + (bid >= 0 ? `<br>Took the pot in round ${takenR} · bid <b>${fmtMoney(bid)}</b>${pot > bid ? ` · received <b>${fmtMoney(pot - bid)}</b>` : ''}` : '') : '';
 }
 function onRoundsInput(e){
   const f = e.target.dataset.f, row = e.target.closest('.round-row'); if(!row) return;
@@ -734,7 +757,7 @@ function openChitSheet(it){
   $('#chitLock').classList.toggle('hidden', !locked);
   $('#cProgRow').classList.toggle('hidden', !!it); setSwitch('cProg', false); $('#cProgFields').classList.add('hidden');
   roundRows = [];
-  setNum('cDone', 0); setSwitch('cTaken', false); $('#cTakenFields').classList.add('hidden'); setNum('cTakenR', ''); setNum('cTakenB', 0);
+  setNum('cDone', 0); setSwitch('cTaken', false); $('#cTakenFields').classList.add('hidden'); setNum('cTakenR', '');
   drawRounds();
   chitRemTouched = !!(it && it.reminders);
   chitRem.set(it ? effReminders(it) : (cat('chit')?.reminders || [1]));
@@ -760,13 +783,14 @@ async function saveChit(){
     const done = num($('#cDone').value || 0);
     bad += setInvalid('cDoneG', !(isInt(done) && done >= 0 && (!isInt(m) || done < m)), 'cDoneErr', `Enter 0 – ${isInt(m) ? m - 1 : 'people − 1'}. A chit with every round done is already closed.`);
     let taken = null;
-    if(isOn('cTaken')){
-      const tr = num($('#cTakenR').value), tb = num($('#cTakenB').value || 0), minR = agentFirst ? 2 : 1;
-      bad += setInvalid('cTakenRG', !(isInt(tr) && tr >= minR && isInt(done) && tr <= done), 'cTakenRErr', done >= minR ? `Pick round ${minR} – ${done}.` : `Complete at least round ${minR} first.`);
-      bad += setInvalid('cTakenBG', !(tb >= 0 && (!(pot > 0) || tb < pot)));
-      taken = { round:tr, bid:tb, received: round2(pot - tb) };
-    }
     readRounds();
+    if(isOn('cTaken')){
+      const tr = num($('#cTakenR').value), minR = agentFirst ? 2 : 1, okR = isInt(tr) && tr >= minR && isInt(done) && tr <= done;
+      bad += setInvalid('cTakenRG', !okR, 'cTakenRErr', done >= minR ? `Pick round ${minR} – ${done}.` : `Complete at least round ${minR} first.`);
+      const tb = okR ? num(roundRows[tr - 1]?.bid) : 0;
+      if(okR) bad += setInvalid(`rr${tr}bG`, !(tb >= 0 && (!(pot > 0) || tb < pot)));
+      taken = { round:tr, bid:round2(tb || 0), received: round2(pot - (tb || 0)) };
+    }
     const rows = [];
     if(isInt(done) && done > 0 && done < m){
       for(let r = 1; r <= done; r++){
@@ -1500,6 +1524,7 @@ function wire(){
   $('#pfDob').addEventListener('input', drawAge);
   $('#pfPin').addEventListener('input', onPinInput);
   $('#pfAvatar').addEventListener('click', openAvatarSheet);
+  $('#hdrAvatar').addEventListener('click', () => go('profile'));
   $('#avGrid').addEventListener('click', e => { const b = e.target.closest('[data-av]'); if(b) setAvatar({ type:'emoji', v:b.dataset.av }, 'Profile icon updated'); });
   $('#avLetter').addEventListener('click', () => setAvatar(null, 'Showing your initial'));
   $('#avPhoto').addEventListener('click', () => { const p = $('#avatarPicker'); p.value = ''; p.click(); });
@@ -1537,7 +1562,7 @@ function wire(){
     chitChanged();
   }));
   ['cInt', 'cStart', 'cDone', 'cTakenR'].forEach(id => { $('#' + id).addEventListener('input', chitChanged); $('#' + id).addEventListener('change', chitChanged); });
-  ['cTakenB', 'cAgComm'].forEach(id => $('#' + id).addEventListener('input', chitSummary));
+  $('#cAgComm').addEventListener('input', chitSummary);
   $('#cRounds').addEventListener('input', onRoundsInput);
   $('#chitSave').addEventListener('click', saveChit);
   $('#chitDelete').addEventListener('click', deleteChit);
@@ -1576,7 +1601,7 @@ function wire(){
   $('#exGo').addEventListener('click', runExport);
 
   $('#themeRow').addEventListener('click', () => withTransition(() => { setSetting({ theme: st().settings.theme === 'dark' ? 'light' : 'dark' }); }));
-  $('#palGrid').addEventListener('click', e => { const b = e.target.closest('.swatch'); if(!b || b.dataset.pal === st().settings.palette) return; withTransition(() => setSetting({ palette:b.dataset.pal })); });
+  $('#palGrid').addEventListener('click', e => { const b = e.target.closest('.swatch'); if(!b || b.dataset.pal === palKey(st().settings.palette)) return; withTransition(() => setSetting({ palette:b.dataset.pal })); });
   bindSeg($('#textSizeSeg'), b => setSetting({ text:b.dataset.size }));
   $('#alertsRow').addEventListener('click', () => setAlerts(!st().settings.alertsOn));
   $('#boldRow').addEventListener('click', () => setSetting({ bold: !st().settings.bold }));
@@ -1612,6 +1637,14 @@ function wire(){
       yes: n ? 'Log out anyway' : 'Log out', onYes:() => onLogout(false) });
   });
   addEventListener('resize', () => { moveAllThumbs(); moveNavInd(); });
+  // The + button tucks away while scrolling down, and whenever it would sit on a card's buttons.
+  let lastY = scrollY, goingDown = false, fabRaf = 0;
+  addEventListener('scroll', () => {
+    const y = scrollY, dy = y - lastY; if(Math.abs(dy) < 6) return; lastY = y;
+    goingDown = dy > 0 && y > 60 && innerHeight + y < document.documentElement.scrollHeight - 24; queueFabCheck();
+  }, { passive:true });
+  queueFabCheck = () => { cancelAnimationFrame(fabRaf); fabRaf = requestAnimationFrame(() => fabCheck(goingDown)); };
+  new ResizeObserver(() => setTimeout(queueFabCheck, 400)).observe($('#toastStack') || document.body);
 
   onSyncStatus(renderSync);
   onAfterSync(() => syncFiles({ userId:user.id, items:st().items, deletes:dueFileDeletes(), clearDelete:clearFileDelete,
