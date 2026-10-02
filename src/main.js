@@ -64,6 +64,8 @@ async function logout(sessionExpired){
 
 function boot(){
   initToasts(); initSheets(); initNumeric(); initInfo(); initDateFields();
+  // Web version (incl. iPhone home-screen app): keep working offline after the first visit.
+  if(!isNative && import.meta.env.PROD && 'serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
   if(!supabase){
     $('#boot').innerHTML = '<p style="max-width:280px;text-align:center;color:var(--text-dim);line-height:1.6">This build is missing its server settings. Please install the latest version of Finly.</p>';
     return;

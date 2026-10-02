@@ -333,7 +333,8 @@ function renderProfile(){
       <span class="cat-name">${esc(c.name)}</span><span class="cat-count">${n ? n + ' active' : c.optional ? 'Optional' : 'No items yet'}</span>
       <span class="cat-rem">${ICON.bell}${esc(remSummary(c.reminders))}</span></button>`; }).join('');
   $('#palGrid').innerHTML = swatchesHTML(st().settings.palette);
-  $('#versionSub').textContent = `Version ${APP_VERSION}`;
+  $('#versionSub').textContent = isNative ? `Version ${APP_VERSION}` : 'Web version · updates automatically';
+  $('#checkUpdateBtn').classList.toggle('hidden', !isNative);
 }
 
 let alertSig = '', seenSig = '';
@@ -1728,6 +1729,7 @@ let updateInfo = null, forcedUpdate = false;
 const verParts = v => String(v || '').replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
 const isNewer = v => { const a = verParts(v), b = verParts(APP_VERSION); for(let i = 0; i < 3; i++) if((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0); return false; };
 function loadUpdateInfo(){
+  if(!isNative){ updateInfo = null; return; }
   try{ updateInfo = JSON.parse(localStorage.getItem(UPD_KEY) || 'null'); }catch{ updateInfo = null; }
   if(updateInfo && !isNewer(updateInfo.latest)) updateInfo = null;
 }
@@ -1753,6 +1755,7 @@ function startUpdateDownload(){
   if(!forcedUpdate) toast({ type:'success', title:'Downloading the update', body:'Open the downloaded file and tap Install. Your data stays as it is.', ms:7000 });
 }
 async function checkUpdates(force){
+  if(!isNative) return null;   // the web version is always the latest — APK updates don't apply
   if(!navigator.onLine) return null;
   const last = Number(localStorage.getItem('finly-update-check') || 0);
   if(!force && Date.now() - last < 3600e3) return null;
