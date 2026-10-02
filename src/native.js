@@ -59,28 +59,64 @@ export function onNotificationTap(cb){
   LocalNotifications.addListener('localNotificationActionPerformed', a => cb(a.notification?.extra?.itemId));
 }
 
+/** Exact alarms fire on time even in battery saver; Finly declares USE_EXACT_ALARM so Android grants them. */
+async function exactAllowed(){
+  try{ return (await LocalNotifications.checkExactNotificationSetting()).exact_alarm === 'granted'; }catch{ return false; }
+}
+/** Reminder slots already handed to Android, so a missed 9 AM slot is only made up once. */
+const SLOT_KEY = 'finly-reminder-slots';
+function loadSlots(){ try{ return JSON.parse(localStorage.getItem(SLOT_KEY) || '{}'); }catch{ return {}; } }
+function saveSlots(m){
+  const cutoff = Date.now() - 40 * 86400000;
+  for(const k of Object.keys(m)) if(m[k] < cutoff) delete m[k];
+  try{ localStorage.setItem(SLOT_KEY, JSON.stringify(m)); }catch{ /* storage full */ }
+}
+/** Shows a notification a few seconds from now, to check that reminders reach this phone. */
+export async function testNotification(){
+  if(!isNative) return 'unavailable';
+  let p = await notifyPermission();
+  if(p !== 'granted') p = await requestNotifyPermission();
+  if(p !== 'granted') return 'denied';
+  await ensureChannel();
+  await LocalNotifications.schedule({ notifications:[{ id:900002, channelId:CHANNEL, title:'Finly reminders are working', body:'You\'ll get reminders like this before your due dates.',
+    schedule:{ at:new Date(Date.now() + 5000), allowWhileIdle:true }, isExactNotification: await exactAllowed(), smallIcon:'ic_stat_finly' }] });
+  return 'sent';
+}
+
 let schedTimer = null;
 /** Rebuild every pending reminder from the current data (cheap: ≤ 64 alarms). */
 export function scheduleReminders(build){ clearTimeout(schedTimer); schedTimer = setTimeout(() => doSchedule(build).catch(e => console.warn('Reminder scheduling failed', e)), 800); }
 async function doSchedule(build){
   if(!isNative) return;
-  const pending = (await LocalNotifications.getPending()).notifications.filter(n => n.id !== UPDATE_NOTIF_ID);
+  const pending = (await LocalNotifications.getPending()).notifications.filter(n => n.id !== UPDATE_NOTIF_ID && n.id !== 900002);
   if(pending.length) await LocalNotifications.cancel({ notifications: pending.map(n => ({ id:n.id })) });
   const { enabled, entries } = build();
   if(!enabled || (await notifyPermission()) !== 'granted') return;
   await ensureChannel();
-  const now = Date.now(), list = [];
+  const exact = await exactAllowed(), slots = loadSlots();
+  const now = Date.now(), list = [], today = new Date(); today.setHours(0, 0, 0, 0);
   let id = 1;
   for(const e of entries){
+    const dueEnd = parseISO(e.due); dueEnd.setHours(23, 59, 0, 0);
+    if(dueEnd.getTime() < now) continue;   // never remind after the due date
     for(const off of e.offsets){
-      const at = parseISO(e.due); at.setDate(at.getDate() - off); at.setHours(9, 0, 0, 0);
-      if(at.getTime() <= now + 60000 || at.getTime() - now > 120 * 86400000) continue;
+      let at = parseISO(e.due); at.setDate(at.getDate() - off); at.setHours(9, 0, 0, 0);
+      const key = `${e.id}|${e.due}|${off}`;
+      if(at.getTime() <= now + 60000){
+        // Today's 9 AM slot already passed and was never scheduled (e.g. added after 9 AM): remind shortly instead.
+        const slotDay = new Date(at); slotDay.setHours(0, 0, 0, 0);
+        if(slotDay.getTime() !== today.getTime() || slots[key]) continue;
+        at = new Date(now + 90000);
+      }
+      if(at.getTime() - now > 120 * 86400000) continue;
+      slots[key] = at.getTime();
       const when = off === 0 ? 'today' : off === 1 ? 'tomorrow' : `in ${off} days`;
       list.push({ id: id++, channelId:CHANNEL, title: e.chit ? `${e.name} · round ${e.round} ${when}` : `${e.name} due ${when}`,
-        body: e.chit ? `${fmtMoney(e.amount)} due on ${fmtShort(e.due)}. Tap to record the round.` : `${fmtMoney(e.amount)} due on ${fmtShort(e.due)}. Tap to mark it paid.`,
-        schedule:{ at, allowWhileIdle:true }, isExactNotification:false, extra:{ itemId:e.id }, smallIcon:'ic_stat_finly' });
+        body: `${fmtMoney(e.amount)} due on ${fmtShort(e.due)}. ${e.chit ? 'Tap to record the round.' : e.lend ? 'Tap to record the payment.' : 'Tap to mark it paid.'}`,
+        schedule:{ at, allowWhileIdle:true }, isExactNotification:exact, extra:{ itemId:e.id }, smallIcon:'ic_stat_finly' });
     }
   }
+  saveSlots(slots);
   list.sort((a, b) => a.schedule.at - b.schedule.at);
   if(list.length) await LocalNotifications.schedule({ notifications: list.slice(0, 64) });
 }
@@ -98,7 +134,7 @@ export async function notifyUpdate(version){
   if(localStorage.getItem(key) || (await notifyPermission()) !== 'granted') return;
   await prepareUpdateChannel();
   await LocalNotifications.schedule({ notifications:[{ id:UPDATE_NOTIF_ID, channelId:'updates', title:'Finly update available',
-    body:`Version ${version} is ready. Tap to open Finly and update.`, smallIcon:'ic_stat_finly', extra:{ update:true } }] });
+    body:`Version ${version} is ready. Tap to open Finly and update.`, smallIcon:'ic_stat_finly', isExactNotification:false, extra:{ update:true } }] });
   localStorage.setItem(key, '1');
 }
 
