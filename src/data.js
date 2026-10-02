@@ -56,7 +56,9 @@ const defaultCats = () => [
   { id:'emi', name:'EMI', emoji:'🏦', kind:'bill', ci:0, reminders:[1], _u:0 },
   { id:'chit', name:'Chit Fund', emoji:'🤝', kind:'chit', ci:1, reminders:[1], builtin:true, _u:0 },
   { id:'household', name:'Household', emoji:'🏠', kind:'bill', ci:2, reminders:[1], optional:true, _u:0 },
-  { id:'recharge', name:'Recharges', emoji:'📶', kind:'bill', ci:3, reminders:[1], _u:0 }];
+  { id:'recharge', name:'Recharges', emoji:'📶', kind:'bill', ci:3, reminders:[1], _u:0 },
+  GOLD_LOAN()];
+const GOLD_LOAN = () => ({ id:'goldloan', name:'Gold Loan', emoji:'🪙', kind:'bill', ci:4, reminders:[1], _u:0 });
 
 export const store = { uid:null, state:null, meta:null };
 const dataKey = id => `finly:data:${id}`;
@@ -68,7 +70,20 @@ export function loadStore(id){
   store.state = saved?.state || { settings:{ ...DEFAULT_SETTINGS, _u:0 }, cats:defaultCats(), items:[] };
   store.state.settings = { ...DEFAULT_SETTINGS, ...store.state.settings };
   store.meta = saved?.meta || { dirty:{}, cursor:null, lastSync:0 };
+  store.meta.fileDeletes ||= [];
+  store.meta.migrations ||= [];
+  if(!store.meta.migrations.includes('goldloan')){
+    if(!store.state.cats.some(c => c.id === 'goldloan')) store.state.cats.push(GOLD_LOAN());
+    store.meta.migrations.push('goldloan');
+    saveStore();
+  }
 }
+export function queueFileDelete(path){ if(path && store.meta && !store.meta.fileDeletes.some(d => d.p === path)){ store.meta.fileDeletes.push({ p:path, t:Date.now() }); saveStore(); } }
+export function clearFileDelete(path){ if(!store.meta) return; store.meta.fileDeletes = store.meta.fileDeletes.filter(d => d.p !== path); saveStore(); }
+/** Paths queued for removal long enough ago that an Undo can no longer bring them back. */
+export const dueFileDeletes = () => (store.meta?.fileDeletes || []).filter(d => Date.now() - d.t > 15000).map(d => d.p);
+let afterSyncHook = null;
+export const onAfterSync = fn => { afterSyncHook = fn; };
 export function saveStore(){
   if(!store.uid) return;
   try{ localStorage.setItem(dataKey(store.uid), JSON.stringify({ state:store.state, meta:store.meta })); }
@@ -169,6 +184,7 @@ export async function runSync(){
     store.meta.cursor = cursor;
     store.meta.lastSync = Date.now();
     saveStore();
+    if(afterSyncHook) setTimeout(afterSyncHook, 0);
   }catch(e){
     lastError = e?.auth ? 'auth' : isNetErr(e) ? 'network' : (e?.message || 'error');
     if(lastError === 'network') online = navigator.onLine;

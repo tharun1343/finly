@@ -1,8 +1,9 @@
 import { $, $$, esc, ICON, T, refreshToday, parseISO, toISO, addDays, addMonths, dayNum, diffDays, fmtDate, fmtShort, fmtMonth, fmtMoney, round2, uid, clone, num, isInt, reduceMotion, ago } from './util.js';
 import { PALETTES, TOKEN_MAP, paletteVars, swatchStyle } from './palettes.js';
-import { store, commitState, replaceState, onSyncStatus, syncStatus, scheduleSync, runSync, onRemoteChanges, pendingCount } from './data.js';
+import { store, commitState, replaceState, onSyncStatus, syncStatus, scheduleSync, runSync, onRemoteChanges, pendingCount, queueFileDelete, clearFileDelete, dueFileDeletes, onAfterSync } from './data.js';
+import { MAX_FILES, prepareFile, putLocal, thumbUrl, openAttachment, openBlob, syncFiles, FileError } from './files.js';
 import { toast, layoutFab, openSheet, closeSheet, confirmBox, setInvalid, showAlert, clearForm, scrollToError, setBusy, bindSwitch, setSwitch, isOn,
-  moveThumb, bindSeg, moveAllThumbs, setNum, bindNumeric, enhanceSelect, setSelect, makeReminderPicker, remSummary, withTransition, flip, handleBackInOverlays, footShadow } from './ui.js';
+  moveThumb, bindSeg, moveAllThumbs, setNum, bindNumeric, enhanceSelect, setSelect, makeReminderPicker, remSummary, withTransition, flip, handleBackInOverlays, footShadow, fmtNumInput } from './ui.js';
 import { isNative, APP_VERSION, APK_URL, setBarsStyle, scheduleReminders, notifyPermission, requestNotifyPermission, saveFile, checkForUpdate, openExternal } from './native.js';
 import { paymentRows, summaryRow, buildCsv, buildPdf } from './export.js';
 
@@ -19,7 +20,13 @@ const activeItems = () => st().items.filter(i => i.status === 'active');
 const closedItems = () => st().items.filter(i => i.status === 'closed').sort((a, b) => dayNum(b.closedOn) - dayNum(a.closedOn));
 const roundDate = (c, r) => addMonths(c.start, (r - 1) * c.interval, parseISO(c.start).getDate());
 const effReminders = it => it.reminders ?? (cat(it.catId)?.reminders ?? [1]);
-const nextDue = it => it.kind === 'chit' ? roundDate(it, it.roundsDone + 1) : it.due;
+const ev = it => it.every || 1;
+const PER = { 1:'month', 3:'quarter', 6:'6 months', 12:'year' };
+const perLabel = n => PER[n] || `${n} months`;
+const announced = it => it.kind === 'chit' && it.nextDate && it.nextDateRound === it.roundsDone + 1;
+const nextDue = it => it.kind === 'chit' ? (announced(it) ? it.nextDate : roundDate(it, it.roundsDone + 1)) : it.due;
+const fileCount = it => (it.files || []).length;
+const clipHTML = it => fileCount(it) ? `<button class="clip-badge" data-act="files" aria-label="${fileCount(it)} documents"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>${fileCount(it)}</button>` : '';
 const alertWindow = it => Math.max(7, ...effReminders(it));
 const paidRecently = it => it.kind === 'bill' && !!it.lastPaid && diffDays(T, it.due) > alertWindow(it);
 const itemPaid = it => it.kind === 'chit' ? it.paidIn : it.paid;
@@ -30,7 +37,7 @@ const displayName = () => st().settings.name || user.name || (user.email || '').
 function histDesc(h, mf, rich){
   const b = s => rich ? `<b>${s}</b>` : s;
   return h.type === 'agent' ? 'Agent\'s round — no auction'
-    : h.type === 'commission' ? `Got commission ${b(mf(h.share))} (bid ${mf(h.bid)})`
+    : h.type === 'commission' ? `Got commission ${b(mf(h.share))}${h.bid != null ? ` (bid ${mf(h.bid)})` : ''}`
     : h.type === 'taken' ? `${b('Took the pot')} — bid ${mf(h.bid)}, received ${mf(h.received)}`
     : h.type === 'last' ? b('Final round — pot came to you') : h.type === 'opening' ? `Opening balance for rounds 1–${h.round}` : 'Paid in full';
 }
@@ -55,11 +62,11 @@ function totals(){
   let loanDebt = 0, loanPaid = 0, chitDebt = 0, monthly = 0, savings = 0, commission = 0, savingComm = 0, takenCount = 0, savingCount = 0, lastEnd = null;
   const byCat = {};
   for(const it of activeItems()){
-    const m = it.kind === 'chit' ? it.installment / it.interval : it.amount;
+    const m = it.kind === 'chit' ? it.installment / it.interval : it.amount / ev(it);
     monthly += m; byCat[it.catId] = (byCat[it.catId] || 0) + m;
     if(it.kind === 'bill'){
       if(!it.ongoing){ loanDebt += it.amount * it.tenureLeft; loanPaid += it.paid;
-        const end = addMonths(it.due, it.tenureLeft - 1, it.anchorDay); if(!lastEnd || dayNum(end) > dayNum(lastEnd)) lastEnd = end; }
+        const end = addMonths(it.due, (it.tenureLeft - 1) * ev(it), it.anchorDay); if(!lastEnd || dayNum(end) > dayNum(lastEnd)) lastEnd = end; }
     } else {
       commission += it.commission;
       if(it.taken){ const rem = it.installment * (it.members - it.roundsDone); chitDebt += rem; takenCount++;
@@ -117,17 +124,18 @@ function billStatus(it){
 function billCard(it, i){
   const c = cat(it.catId), st_ = billStatus(it);
   const pct = it.ongoing ? 0 : Math.round((it.tenureTotal - it.tenureLeft) / it.tenureTotal * 100);
+  const unit = ev(it) === 1 ? 'months' : 'payments';
   const middle = it.ongoing
-    ? `<div class="recurring">${ICON.repeat}Repeats monthly · no end date</div>`
-    : `<div class="progress-row"><div class="progress-labels"><span>Tenure <b>${it.tenureLeft} of ${it.tenureTotal} months left</b></span><span>${pct}%</span></div>${barHTML(it.id, pct)}</div>`;
+    ? `<div class="recurring">${ICON.repeat}Repeats every ${ev(it) === 1 ? 'month' : perLabel(ev(it))} · no end date</div>`
+    : `<div class="progress-row"><div class="progress-labels"><span>Tenure <b>${it.tenureLeft} of ${it.tenureTotal} ${unit} left</b></span><span>${pct}%</span></div>${barHTML(it.id, pct)}</div>`;
   const figs = it.ongoing
     ? `<div class="fig"><span class="fig-label">Paid so far</span><span class="fig-value">${fmtMoney(it.paid)}</span></div><div class="fig"><span class="fig-label">Last paid</span><span class="fig-value">${it.lastPaid ? fmtShort(it.lastPaid) : '—'}</span></div>`
     : `<div class="fig"><span class="fig-label">Paid</span><span class="fig-value">${fmtMoney(it.paid)}</span></div><div class="fig"><span class="fig-label">Left</span><span class="fig-value">${fmtMoney(it.amount * it.tenureLeft)}</span></div>`;
   const recent = paidRecently(it);
   return `<article class="item-card ${enterCls(it.id)}" data-id="${it.id}" style="--accent:${catColor(c)};--i:${i}">
     <div class="ic-top"><div class="ic-id"><div class="glyph">${glyphHTML(c)}</div><div style="min-width:0"><div class="ic-name">${esc(it.name)}</div>
-      <div class="ic-meta"><span class="badge ${st_.cls}">${st_.label}</span><span class="due-text ${st_.urgent ? 'urgent' : ''}">${st_.text}</span></div></div></div>
-      <div class="ic-amt"><div class="amt">${fmtMoney(it.amount)}</div><div class="per">/ month</div></div></div>
+      <div class="ic-meta"><span class="badge ${st_.cls}">${st_.label}</span><span class="due-text ${st_.urgent ? 'urgent' : ''}">${st_.text}</span>${clipHTML(it)}</div></div></div>
+      <div class="ic-amt"><div class="amt">${fmtMoney(it.amount)}</div><div class="per">/ ${perLabel(ev(it))}</div></div></div>
     ${middle}
     <div class="ic-foot"><div class="figs">${figs}</div><div class="actions">
       <button class="round-btn ghost" data-act="edit" aria-label="Edit ${esc(it.name)}">${ICON.edit}</button>
@@ -140,7 +148,7 @@ function chitCompact(it, i){
   const dueTxt = d < 0 ? `Round ${r} was ${fmtDate(due)}` : d === 0 ? `Round ${r} · today` : d === 1 ? `Round ${r} · tomorrow` : `Round ${r} · ${fmtDate(due)}`;
   return `<article class="item-card ${enterCls(it.id)}" data-id="${it.id}" style="--accent:${taken ? 'var(--rose)' : catColor(c)};--i:${i}">
     <div class="ic-top"><div class="ic-id"><div class="glyph" style="--accent:${catColor(c)}">${glyphHTML(c)}</div><div style="min-width:0"><div class="ic-name">${esc(it.name)}</div>
-      <div class="ic-meta"><span class="badge ${taken ? 'debt' : 'save'}">${taken ? 'Taken · Debt' : 'Not taken · Savings'}</span><span class="due-text ${urgent ? 'urgent' : ''}">${dueTxt}</span></div></div></div>
+      <div class="ic-meta"><span class="badge ${taken ? 'debt' : 'save'}">${taken ? 'Taken · Debt' : 'Not taken · Savings'}</span><span class="due-text ${urgent ? 'urgent' : ''}">${dueTxt}</span>${clipHTML(it)}</div></div></div>
       <div class="ic-amt"><div class="amt">${fmtMoney(it.installment)}</div><div class="per">/ round</div></div></div>
     <div class="progress-row"><div class="progress-labels"><span>Rounds <b>${it.roundsDone} of ${it.members} done</b></span><span>${pct}%</span></div>${barHTML(it.id, pct)}</div>
     <div class="ic-foot"><div class="figs">
@@ -223,25 +231,26 @@ function renderStats(){
 function chitDetail(it, i){
   const c = cat('chit'), r = it.roundsDone + 1, due = nextDue(it), taken = !!it.taken, left = it.members - it.roundsDone;
   const meta = `${fmtMoney(it.pot)} · ${it.members} people · every ${it.interval === 1 ? 'month' : it.interval + ' months'}${it.agent ? ' · Agent ' + esc(it.agent) : ''}`;
+  const dateBtn = `<button class="m-edit" data-act="date">${ICON.edit}Change date</button>`;
   let metrics, note;
   if(taken){
     const owe = it.installment * left, net = it.taken.received - (it.paidIn + owe);
     metrics = `<div class="metric"><div class="fig-label">Received</div><div class="fig-value">${fmtMoney(it.taken.received)}</div><div class="fig-sub">Round ${it.taken.round} · bid ${fmtMoney(it.taken.bid)}</div></div>
       <div class="metric"><div class="fig-label">Still owe</div><div class="fig-value neg">${fmtMoney(owe)}</div><div class="fig-sub">${left} round${left === 1 ? '' : 's'} × ${fmtMoney(it.installment)}</div></div>
-      <div class="metric"><div class="fig-label">Next due</div><div class="fig-value">${fmtDate(due)}</div><div class="fig-sub">Round ${r} of ${it.members}</div></div>
+      <div class="metric"><div class="fig-label">Next due${announced(it) ? ' · announced' : ''}</div><div class="fig-value">${fmtDate(due)}</div><div class="fig-sub">Round ${r} of ${it.members}</div>${dateBtn}</div>
       <div class="metric"><div class="fig-label">${net >= 0 ? 'Projected gain' : 'Projected cost'}</div><div class="fig-value ${net >= 0 ? 'pos' : 'neg'}">${fmtMoney(Math.abs(net))}</div><div class="fig-sub">Received − total you'll pay</div></div>`;
     note = `You took the pot in round ${it.taken.round}. You now pay the <b>full ${fmtMoney(it.installment)}</b> every round until it ends — counted as <b>debt</b>.`;
   } else {
     metrics = `<div class="metric"><div class="fig-label">Paid in</div><div class="fig-value">${fmtMoney(it.paidIn)}</div><div class="fig-sub">${it.roundsDone} round${it.roundsDone === 1 ? '' : 's'}</div></div>
       <div class="metric"><div class="fig-label">Commission so far</div><div class="fig-value pos">+${fmtMoney(it.commission)}</div><div class="fig-sub">Your share of winning bids</div></div>
-      <div class="metric"><div class="fig-label">Next auction</div><div class="fig-value">${fmtDate(due)}</div><div class="fig-sub">Round ${r} of ${it.members}</div></div>
+      <div class="metric"><div class="fig-label">Next auction${announced(it) ? ' · announced' : ''}</div><div class="fig-value">${fmtDate(due)}</div><div class="fig-sub">Round ${r} of ${it.members}</div>${dateBtn}</div>
       <div class="metric"><div class="fig-label">Still waiting</div><div class="fig-value">${it.members - it.roundsDone}</div><div class="fig-sub">people incl. you</div></div>`;
     note = `You haven't taken the pot yet. Each round you get a share of the winning bid, so you pay less — counted as <b>savings</b> until you take it.`;
   }
   const hist = it.history.length ? [...it.history].reverse().map(h => `<div class="h-row"><span class="h-round">R${h.round}</span><span class="h-desc">${histDesc(h, fmtMoney, true)}<br><span style="color:var(--text-faint)">${fmtDate(h.date)}</span></span><span class="h-amt">${fmtMoney(h.paid)}</span></div>`).join('')
     : '<div class="h-desc" style="padding:6px 0">No rounds recorded yet.</div>';
   return `<article class="chit-card ${enterCls('w_' + it.id)}" data-id="${it.id}" data-state="${taken ? 'taken' : 'saving'}" style="--i:${i}">
-    <div class="chit-head"><div style="min-width:0"><div class="chit-name">${c?.emoji ? esc(c.emoji) + ' ' : ''}${esc(it.name)}</div><div class="chit-meta">${meta}</div></div>
+    <div class="chit-head"><div style="min-width:0"><div class="chit-name">${c?.emoji ? esc(c.emoji) + ' ' : ''}${esc(it.name)} ${clipHTML(it)}</div><div class="chit-meta">${meta}</div></div>
       <span class="status-pill ${taken ? 'debt' : 'save'}">${taken ? 'Debt' : 'Savings'}</span></div>
     <div class="progress-row"><div class="progress-labels"><span>Rounds <b>${it.roundsDone} of ${it.members}</b></span><span>${Math.round(it.roundsDone / it.members * 100)}%</span></div>${barHTML('w_' + it.id, Math.round(it.roundsDone / it.members * 100))}</div>
     <div class="metric-grid">${metrics}</div>
@@ -364,6 +373,8 @@ function onCardAction(e){
   const act = btn.dataset.act;
   if(act === 'edit') return it.kind === 'chit' ? openChitSheet(it) : openBillSheet(it);
   if(act === 'hist'){ card.querySelector('.history').classList.toggle('open'); return; }
+  if(act === 'files') return openFilesSheet(it);
+  if(act === 'date') return openAuctionDate(it);
   if(act === 'pay'){ if(btn.dataset.busy) return; btn.dataset.busy = '1'; setTimeout(() => delete btn.dataset.busy, 700); return it.kind === 'chit' ? openRoundSheet(it) : payBill(it); }
 }
 
@@ -377,7 +388,7 @@ function payBill(it){
 async function doPay(id){
   const it = findItem(id), closing = !it.ongoing && it.tenureLeft === 1, name = it.name, amt = it.amount;
   if(closing) await animateOut(id);
-  const newDue = addMonths(it.due, 1, it.anchorDay);
+  const newDue = addMonths(it.due, ev(it), it.anchorDay);
   commit(() => {
     const x = findItem(id);
     x.paid += x.amount; x.lastPaid = T; x.history.push({ date:T, amount:x.amount, n: x.ongoing ? null : x.tenureTotal - x.tenureLeft + 1 });
@@ -389,59 +400,134 @@ async function doPay(id){
   if(!closing) flashCard(id);
 }
 
+/* ---------- documents attached to a commitment (shared by both forms) ---------- */
+const att = { list:[], fresh:new Map(), removed:[], root:null, alertId:'' };
+const fmtSize = n => n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+function attStart(rootId, alertId, files){ att.root = $('#' + rootId); att.alertId = alertId; att.list = clone(files || []); att.fresh = new Map(); att.removed = []; drawAtt(); }
+function attRow(a, removable){
+  const img = /^image\//.test(a.type);
+  return `<div class="att-item" data-att="${a.id}" role="button" tabindex="0"><span class="att-thumb ${img ? 'img' : ''}">${img ? '🖼️' : 'PDF'}</span>
+    <span style="min-width:0;flex:1"><span class="att-name">${esc(a.name)}</span><span class="att-sub">${img ? 'Photo' : 'PDF'} · ${fmtSize(a.size)}${a.path ? '' : ' · uploads when online'}</span></span>
+    ${removable ? `<button type="button" class="att-x" data-att-x="${a.id}" aria-label="Remove ${esc(a.name)}">${ICON.x}</button>` : ''}</div>`;
+}
+async function fillThumbs(root, list, fresh){
+  for(const a of list){
+    if(!/^image\//.test(a.type)) continue;
+    const b = fresh?.get(a.id);
+    const url = b ? URL.createObjectURL(b) : await thumbUrl(a);
+    const t = root.querySelector(`[data-att="${a.id}"] .att-thumb`);
+    if(url && t) t.innerHTML = `<img src="${url}" alt="">`;
+  }
+}
+function drawAtt(){
+  const full = att.list.length >= MAX_FILES;
+  att.root.innerHTML = att.list.map(a => attRow(a, true)).join('') +
+    `<button type="button" class="att-add" data-att-add ${full ? 'disabled' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>${full ? 'Maximum 3 documents' : `Add photo or PDF (${att.list.length}/${MAX_FILES})`}</button>`;
+  fillThumbs(att.root, att.list, att.fresh);
+  footShadow(att.root.closest('.sheet-overlay'));
+}
+async function attPicked(file){
+  showAlert(att.alertId, '');
+  try{
+    const { meta, blob } = await prepareFile(file);
+    att.list.push(meta); att.fresh.set(meta.id, blob); drawAtt();
+  }catch(e){ showAlert(att.alertId, e instanceof FileError ? e.message : 'That file couldn\'t be added.'); }
+}
+function attClick(e){
+  if(e.target.closest('[data-att-add]')){ const p = $('#filePicker'); p.value = ''; p.click(); return; }
+  const x = e.target.closest('[data-att-x]');
+  if(x){ const a = att.list.find(f => f.id === x.dataset.attX); att.list = att.list.filter(f => f !== a); att.fresh.delete(a.id); if(a.path) att.removed.push(a.path); drawAtt(); return; }
+  const row = e.target.closest('[data-att]'); if(!row) return;
+  const a = att.list.find(f => f.id === row.dataset.att), b = att.fresh.get(a.id);
+  (b ? openBlob(b, a) : openAttachment(a)).catch(err => showAlert(att.alertId, err instanceof FileError ? err.message : 'Couldn\'t open that file.'));
+}
+/** Saves new blobs locally and returns the final file list for the item. */
+async function attCommit(){
+  for(const [id, blob] of att.fresh) await putLocal(id, blob);
+  const removed = [...att.removed];
+  return { files: att.list, afterSave: () => removed.forEach(queueFileDelete) };
+}
+function openFilesSheet(it){
+  $('#fsTitle').textContent = `${it.name} · documents`;
+  const root = $('#fsList');
+  root.innerHTML = (it.files || []).map(a => attRow(a, false)).join('') || '<div class="empty" style="padding:20px">No documents.</div>';
+  root.onclick = e => { const row = e.target.closest('[data-att]'); if(!row) return; const a = it.files.find(f => f.id === row.dataset.att);
+    openAttachment(a).catch(err => toast({ type:'error', title:'Couldn\'t open the file', body: err instanceof FileError ? err.message : 'Please try again.' })); };
+  fillThumbs(root, it.files || []);
+  openSheet('filesSheet');
+}
+const queueItemFiles = it => (it.files || []).forEach(a => a.path && queueFileDelete(a.path));
+
 let editingBill = null, billRemTouched = false, billRem;
 const billCats = () => st().cats.filter(c => c.kind === 'bill');
-function syncBillOngoing(){ $('#bTenureRow').classList.toggle('hidden', isOn('bOngoing')); footShadow($('#billSheet')); }
+function syncBillForm(){
+  const ongoing = isOn('bOngoing'), every = num($('#bEvery').value) || 1;
+  $('#bTenureRow').classList.toggle('hidden', ongoing);
+  $('#bTenLabel').textContent = every === 1 ? 'Total months *' : 'Total payments *';
+  $('#bPaidG label').textContent = editingBill ? (every === 1 ? 'Months paid (tracked)' : 'Payments made (tracked)') : (every === 1 ? 'Months already paid' : 'Payments already made');
+  const ten = num($('#bTen').value), paidM = num($('#bPaidM').value || 0), due = $('#bDue').value, hint = $('#bTenHint');
+  const done = editingBill && !editingBill.ongoing ? editingBill.tenureTotal - editingBill.tenureLeft : paidM;
+  if(!ongoing && isInt(ten) && ten > 0 && due && ten - done >= 1){
+    const end = addMonths(due, (ten - done - 1) * every);
+    hint.textContent = `${ten - done} payment${ten - done === 1 ? '' : 's'} left · last one around ${fmtMonth(end)}`;
+  } else hint.textContent = '';
+  hint.classList.toggle('hidden', ongoing || !hint.textContent);
+  footShadow($('#billSheet'));
+}
 function openBillSheet(it){
   editingBill = it; clearForm('billSheet');
   $('#bCat').innerHTML = billCats().map(c => `<option value="${c.id}">${c.emoji ? c.emoji + '  ' : ''}${esc(c.name)}</option>`).join('');
   $('#billTitle').textContent = it ? 'Edit ' + it.name : 'Add EMI or bill';
   $('#bName').value = it ? it.name : '';
   setSelect('bCat', it && cat(it.catId) ? it.catId : (billCats()[0]?.id || ''));
+  setSelect('bEvery', String(it ? ev(it) : 1));
   setNum('bAmt', it ? it.amount : '');
   setSwitch('bOngoing', it ? it.ongoing : false);
   setNum('bTen', it && !it.ongoing ? it.tenureTotal : '');
   setNum('bPaidM', it && !it.ongoing ? it.tenureTotal - it.tenureLeft : 0);
-  $('#bPaidM').disabled = !!it; $('#bPaidG').querySelector('label').textContent = it ? 'Months paid (tracked)' : 'Months already paid';
+  $('#bPaidM').disabled = !!it;
   $('#bDue').value = it ? it.due : addDays(T, 7);
   $('#bDuePast').classList.toggle('hidden', !it || diffDays(T, it.due) >= 0);
   billRemTouched = !!(it && it.reminders);
   billRem.set(it ? effReminders(it) : (cat($('#bCat').value)?.reminders || [1]));
   billRem.setNote(billRemTouched ? 'Custom for this entry' : 'Category default');
+  attStart('bFiles', 'billAlert', it?.files);
   $('#billDelete').classList.toggle('hidden', !it);
-  syncBillOngoing();
+  syncBillForm();
   openSheet('billSheet');
 }
-function saveBill(){
+async function saveBill(){
   clearForm('billSheet');
-  const name = $('#bName').value.trim(), catId = $('#bCat').value, amt = num($('#bAmt').value), ongoing = isOn('bOngoing');
+  const name = $('#bName').value.trim(), catId = $('#bCat').value, amt = num($('#bAmt').value), ongoing = isOn('bOngoing'), every = num($('#bEvery').value) || 1;
   const ten = num($('#bTen').value), paidM = num($('#bPaidM').value || 0), due = $('#bDue').value;
   let bad = 0;
   bad += setInvalid('bNameG', !name);
   bad += setInvalid('bAmtG', !(amt >= 1 && amt <= 1e8));
   if(!ongoing){
     const paidSoFar = editingBill && !editingBill.ongoing ? editingBill.tenureTotal - editingBill.tenureLeft : 0;
-    if(editingBill && !editingBill.ongoing) bad += setInvalid('bTenG', !(isInt(ten) && ten > paidSoFar && ten <= 600), 'bTenErr', `Must be more than the ${paidSoFar} months already paid (max 600).`);
-    else bad += setInvalid('bTenG', !(isInt(ten) && ten >= 1 && ten <= 600), 'bTenErr', 'Enter 1 – 600 months.');
-    if(!editingBill) bad += setInvalid('bPaidG', !(isInt(paidM) && paidM >= 0 && (!isInt(ten) || paidM < ten)), 'bPaidErr', 'Must be less than the total tenure.');
+    if(editingBill && !editingBill.ongoing) bad += setInvalid('bTenG', !(isInt(ten) && ten > paidSoFar && ten <= 600), 'bTenErr', `Must be more than the ${paidSoFar} already paid (max 600).`);
+    else bad += setInvalid('bTenG', !(isInt(ten) && ten >= 1 && ten <= 600), 'bTenErr', 'Enter 1 – 600.');
+    if(!editingBill) bad += setInvalid('bPaidG', !(isInt(paidM) && paidM >= 0 && (!isInt(ten) || paidM < ten)), 'bPaidErr', 'Must be less than the total.');
   }
   bad += setInvalid('bDueG', !due);
   if(bad){ showAlert('billAlert', `Please fix ${bad} highlighted field${bad > 1 ? 's' : ''}.`); scrollToError('billSheet'); return; }
   const rem = billRemTouched ? billRem.get() : null;
+  const { files, afterSave } = await attCommit();
   closeSheet('billSheet');
   if(editingBill){
     const id = editingBill.id;
     commit(() => {
       const x = findItem(id), paidMonths = x.ongoing ? 0 : x.tenureTotal - x.tenureLeft;
-      Object.assign(x, { name, catId, amount:amt, ongoing, due, anchorDay:parseISO(due).getDate(), reminders:rem });
+      Object.assign(x, { name, catId, amount:amt, every, ongoing, due, anchorDay:parseISO(due).getDate(), reminders:rem, files });
       if(ongoing){ x.tenureTotal = null; x.tenureLeft = null; } else { x.tenureTotal = ten; x.tenureLeft = ten - paidMonths; }
     }, { type:'success', title:'Changes saved', body:name });
+    afterSave();
     flashCard(id);
   } else {
     const id = uid();
     commit(() => {
-      const b = { id, kind:'bill', catId, name, amount:amt, ongoing, tenureTotal: ongoing ? null : ten, tenureLeft: ongoing ? null : ten - paidM,
-        paid: ongoing ? 0 : amt * paidM, due, anchorDay: parseISO(due).getDate(), reminders:rem, lastPaid:null, history:[], status:'active' };
+      const b = { id, kind:'bill', catId, name, amount:amt, every, ongoing, tenureTotal: ongoing ? null : ten, tenureLeft: ongoing ? null : ten - paidM,
+        paid: ongoing ? 0 : amt * paidM, due, anchorDay: parseISO(due).getDate(), reminders:rem, lastPaid:null, history:[], status:'active', files };
       if(!ongoing && paidM > 0) b.history.push({ date:T, amount: amt * paidM, n: paidM, opening:true });
       st().items.push(b);
       filter = 'all';
@@ -454,9 +540,10 @@ function saveBill(){
 function deleteBill(){
   const it = editingBill; if(!it) return;
   closeSheet('billSheet');
-  confirmBox({ title:`Delete ${it.name}?`, body:'It will be removed from your commitments and totals. You can undo right after.', onYes: async () => {
+  confirmBox({ title:`Delete ${it.name}?`, body:'It will be removed from your commitments and totals, with its documents. You can undo right after.', onYes: async () => {
     await animateOut(it.id);
     commit(() => { st().items = st().items.filter(i => i.id !== it.id); }, { type:'warning', title:'Deleted', body:it.name });
+    queueItemFiles(it);
   }});
 }
 
@@ -471,11 +558,70 @@ function chitSummary(){
   let html = `<b>${m} rounds</b> · every ${iv === 1 ? 'month' : iv + ' months'}<br>${fmtDate(s)} → <b>${fmtDate(end)}</b>`;
   if(inst > 0) html += `<br>${fmtMoney(inst)} × ${m} people = <b>${fmtMoney(coll)}</b> ` + (Math.abs(coll - p) < 1 ? '✓ matches the chit value' : `<span class="warn">— doesn't match ${fmtMoney(p)}</span>`);
   if(isOn('cAgentFirst')) html += '<br>Round 1 goes to the agent (no auction).';
-  if(isOn('cProg') && !editingChit){ const d = num($('#cDone').value); if(isInt(d) && d >= 0 && d < m){
-    html += `<br>Next: <b>round ${d + 1}</b> on ${fmtDate(roundDate(fake, d + 1))}`;
-    if(d > 0 && diffDays(T, roundDate(fake, d)) > 0) html += `<br><span class="warn">Round ${d} is scheduled for ${fmtDate(roundDate(fake, d))}, which hasn't happened yet — check the start date or rounds completed.</span>`; } }
+  if(isOn('cProg') && !editingChit){ const d = num($('#cDone').value); if(isInt(d) && d >= 0 && d < m) html += `<br>Next: <b>round ${d + 1}</b> around ${fmtDate(roundDate(fake, d + 1))} — you can change it once it's announced.`; }
   $('#chitSummary').innerHTML = html;
 }
+
+/* ---------- past auctions, one row each ---------- */
+let roundRows = [];
+const MAX_PAST = 100;
+function rowKind(r, agentFirst, takenR){ if(agentFirst && r === 1) return 'agent'; if(takenR && r === takenR) return 'taken'; if(takenR && r > takenR) return 'full'; return 'auction'; }
+function readRounds(){
+  $$('#cRounds .round-row').forEach(row => {
+    const o = roundRows[+row.dataset.r - 1] ||= {};
+    o.date = row.querySelector('[data-f="date"]').value;
+    o.paid = row.querySelector('[data-f="paid"]').value;
+    const c = row.querySelector('[data-f="comm"]'); if(c) o.comm = c.value;
+  });
+}
+function roundsMeta(){
+  const n = num($('#cDone').value || 0), m = num($('#cMem').value), takenR = isOn('cTaken') ? num($('#cTakenR').value) : NaN;
+  return { count: isInt(n) && n > 0 ? Math.min(n, isInt(m) && m > 1 ? m - 1 : MAX_PAST, MAX_PAST) : 0, I: num($('#cInst').value),
+    s: $('#cStart').value, iv: num($('#cInt').value) || 1, af: isOn('cAgentFirst'), takenR: isInt(takenR) ? takenR : null };
+}
+function drawRounds(){
+  const box = $('#cRounds');
+  if(!isOn('cProg') || editingChit){ box.innerHTML = ''; $('#cRoundsTotal').textContent = ''; return; }
+  readRounds();
+  const { count, I, s, iv, af, takenR } = roundsMeta();
+  let html = '';
+  for(let r = 1; r <= count; r++){
+    const o = roundRows[r - 1] ||= {}, kind = rowKind(r, af, takenR);
+    const date = o.date || (s ? roundDate({ start:s, interval:iv }, r) : '');
+    const comm = kind === 'auction' ? (o.comm ?? '') : '';
+    const paid = o.paidTouched ? o.paid : (I > 0 ? fmtNumInput(String(round2(I - (num(comm) || 0))), true) : (o.paid || ''));
+    const tag = kind === 'agent' ? '<span class="tag agent">Agent\'s round</span>' : kind === 'taken' ? '<span class="tag taken">You took the pot</span>' : kind === 'full' ? '<span class="tag full">Full amount</span>' : '';
+    html += `<div class="round-row" data-r="${r}"><div class="round-row-head"><span>Round ${r}</span>${tag}</div><div class="rr-grid">
+      <div class="fgroup rr-date" id="rr${r}dG"><label>Date</label><input type="date" data-f="date" value="${date}" max="${T}"></div>
+      <div class="fgroup" id="rr${r}pG"><label>You paid</label><div class="money-wrap"><input type="text" inputmode="decimal" data-money data-f="paid" value="${paid}" autocomplete="off"></div></div>
+      ${kind === 'auction'
+        ? `<div class="fgroup" id="rr${r}cG"><label>Commission</label><div class="money-wrap"><input type="text" inputmode="decimal" data-money data-f="comm" value="${comm}" placeholder="0" autocomplete="off"></div></div>`
+        : `<div class="fgroup"><label>Commission</label><div class="money-wrap"><input type="text" value="0" disabled></div></div>`}
+    </div></div>`;
+  }
+  box.innerHTML = html;
+  $$('[data-money]', box).forEach(bindNumeric);
+  roundsTotal();
+  footShadow($('#chitSheet'));
+}
+function roundsTotal(){
+  readRounds();
+  const { count } = roundsMeta();
+  let paid = 0, comm = 0;
+  for(let i = 0; i < count; i++){ paid += num(roundRows[i]?.paid) || 0; comm += num(roundRows[i]?.comm) || 0; }
+  $('#cRoundsTotal').innerHTML = count ? `${count} round${count === 1 ? '' : 's'} · you paid <b>${fmtMoney(paid)}</b> · commission <b>${fmtMoney(comm)}</b>` : '';
+}
+function onRoundsInput(e){
+  const f = e.target.dataset.f, row = e.target.closest('.round-row'); if(!row) return;
+  const o = roundRows[+row.dataset.r - 1] ||= {};
+  if(f === 'paid') o.paidTouched = true;
+  if(f === 'comm' && !o.paidTouched){
+    const I = num($('#cInst').value);
+    if(I > 0) row.querySelector('[data-f="paid"]').value = fmtNumInput(String(round2(Math.max(0, I - (num(e.target.value) || 0)))), true);
+  }
+  roundsTotal();
+}
+
 function openChitSheet(it){
   editingChit = it; clearForm('chitSheet');
   const locked = !!(it && it.history.length);
@@ -493,15 +639,18 @@ function openChitSheet(it){
   $('#cAgentFirstRow').style.opacity = locked ? .55 : 1;
   $('#chitLock').classList.toggle('hidden', !locked);
   $('#cProgRow').classList.toggle('hidden', !!it); setSwitch('cProg', false); $('#cProgFields').classList.add('hidden');
-  setNum('cDone', 0); setNum('cPaidIn', 0); setNum('cCommSoFar', 0); setSwitch('cTaken', false); $('#cTakenFields').classList.add('hidden'); setNum('cTakenR', ''); setNum('cTakenB', 0);
+  roundRows = [];
+  setNum('cDone', 0); setSwitch('cTaken', false); $('#cTakenFields').classList.add('hidden'); setNum('cTakenR', ''); setNum('cTakenB', 0);
+  drawRounds();
   chitRemTouched = !!(it && it.reminders);
   chitRem.set(it ? effReminders(it) : (cat('chit')?.reminders || [1]));
   chitRem.setNote(chitRemTouched ? 'Custom for this chit' : 'Category default');
+  attStart('cFiles', 'chitAlert', it?.files);
   $('#chitDelete').classList.toggle('hidden', !it);
   chitSummary();
   openSheet('chitSheet');
 }
-function saveChit(){
+async function saveChit(){
   clearForm('chitSheet');
   const name = $('#cName').value.trim(), agent = $('#cAgent').value.trim(), pot = num($('#cPot').value), m = num($('#cMem').value);
   const inst = num($('#cInst').value), iv = num($('#cInt').value), s = $('#cStart').value, agCut = num($('#cAgComm').value || 0), agentFirst = isOn('cAgentFirst');
@@ -512,12 +661,10 @@ function saveChit(){
   bad += setInvalid('cInstG', !(inst >= 1 && inst <= 1e9));
   bad += setInvalid('cStartG', !s);
   bad += setInvalid('cAgCommG', !(agCut >= 0 && (!(pot > 0) || agCut < pot)));
-  let prog = null;
+  let past = null;
   if(!editingChit && isOn('cProg')){
-    const done = num($('#cDone').value || 0), paidIn = num($('#cPaidIn').value || 0), commSoFar = num($('#cCommSoFar').value || 0);
+    const done = num($('#cDone').value || 0);
     bad += setInvalid('cDoneG', !(isInt(done) && done >= 0 && (!isInt(m) || done < m)), 'cDoneErr', `Enter 0 – ${isInt(m) ? m - 1 : 'people − 1'}. A chit with every round done is already closed.`);
-    bad += setInvalid('cPaidG', !(paidIn >= 0 && (!(inst > 0) || !isInt(done) || paidIn <= inst * done)), 'cPaidErr', `Can't be more than ${isInt(done) && inst > 0 ? fmtMoney(inst * done) : 'full payment'} for ${isInt(done) ? done : 'those'} rounds.`);
-    bad += setInvalid('cCommSoFarG', !(commSoFar >= 0));
     let taken = null;
     if(isOn('cTaken')){
       const tr = num($('#cTakenR').value), tb = num($('#cTakenB').value || 0), minR = agentFirst ? 2 : 1;
@@ -525,28 +672,50 @@ function saveChit(){
       bad += setInvalid('cTakenBG', !(tb >= 0 && (!(pot > 0) || tb < pot)));
       taken = { round:tr, bid:tb, received: round2(pot - tb) };
     }
-    prog = { done, paidIn, commSoFar, taken };
+    readRounds();
+    const rows = [];
+    if(isInt(done) && done > 0 && done < m){
+      for(let r = 1; r <= done; r++){
+        const o = roundRows[r - 1] || {}, kind = rowKind(r, agentFirst, taken?.round), paid = num(o.paid), comm = kind === 'auction' ? (num(o.comm || 0)) : 0;
+        bad += setInvalid(`rr${r}dG`, !o.date || diffDays(T, o.date) > 0);
+        bad += setInvalid(`rr${r}pG`, !(paid >= 0 && (!(inst > 0) || paid <= inst)));
+        if(kind === 'auction') bad += setInvalid(`rr${r}cG`, !(comm >= 0 && (!(inst > 0) || comm <= inst)));
+        rows.push({ r, kind, date:o.date, paid, comm });
+      }
+    }
+    past = { done, taken, rows };
   }
   if(bad){ showAlert('chitAlert', `Please fix ${bad} highlighted field${bad > 1 ? 's' : ''}.`); scrollToError('chitSheet'); return; }
   const rem = chitRemTouched ? chitRem.get() : null;
+  const { files, afterSave } = await attCommit();
   closeSheet('chitSheet');
   if(editingChit){
     const id = editingChit.id;
-    commit(() => { const x = findItem(id); Object.assign(x, { name, agent, agentCut:agCut, reminders:rem });
+    commit(() => { const x = findItem(id); Object.assign(x, { name, agent, agentCut:agCut, reminders:rem, files });
       if(!x.history.length) Object.assign(x, { pot, members:m, installment:inst, interval:iv, start:s, agentFirst }); },
       { type:'success', title:'Chit updated', body:name });
+    afterSave();
     flashCard(id);
   } else {
     const id = uid();
     commit(() => {
       const c = { id, kind:'chit', catId:'chit', name, agent, pot, members:m, installment:inst, interval:iv, start:s, agentFirst, agentCut:agCut,
-        roundsDone:0, taken:null, paidIn:0, commission:0, reminders:rem, status:'active', history:[] };
-      if(prog && prog.done > 0){
-        c.roundsDone = prog.done; c.paidIn = prog.paidIn; c.commission = prog.commSoFar; c.taken = prog.taken;
-        c.history.push({ round:prog.done, date:roundDate(c, prog.done), type:'opening', paid:prog.paidIn, share:prog.commSoFar });
+        roundsDone:0, taken:null, paidIn:0, commission:0, reminders:rem, status:'active', history:[], files };
+      if(past && past.rows.length){
+        for(const row of past.rows){
+          const base = { round:row.r, date:row.date, paid:round2(row.paid) };
+          c.history.push(row.kind === 'agent' ? { ...base, type:'agent', share:0 }
+            : row.kind === 'taken' ? { ...base, type:'taken', bid:past.taken.bid, received:past.taken.received, share:0 }
+            : row.kind === 'full' ? { ...base, type:'full', share:0 }
+            : { ...base, type:'commission', bid:null, share:round2(row.comm) });
+        }
+        c.roundsDone = past.rows.length;
+        c.paidIn = round2(c.history.reduce((s_, h) => s_ + h.paid, 0));
+        c.commission = round2(c.history.reduce((s_, h) => s_ + (h.share || 0), 0));
+        c.taken = past.taken;
       }
       st().items.push(c);
-    }, { type:'success', title:name + ' added', body: prog && prog.taken ? 'Tracked as debt — you\'ve taken the pot.' : 'Tracked as savings until you take the pot.' });
+    }, { type:'success', title:name + ' added', body: past?.taken ? 'Tracked as debt — you\'ve taken the pot.' : 'Tracked as savings until you take the pot.' });
     go('wallet');
   }
   maybeAskNotify();
@@ -554,10 +723,36 @@ function saveChit(){
 function deleteChit(){
   const it = editingChit; if(!it) return;
   closeSheet('chitSheet');
-  confirmBox({ title:`Delete ${it.name}?`, body:`All ${it.history.length} recorded round${it.history.length === 1 ? '' : 's'} will be removed too. You can undo right after.`, onYes: async () => {
+  confirmBox({ title:`Delete ${it.name}?`, body:`All ${it.history.length} recorded round${it.history.length === 1 ? '' : 's'} and its documents will be removed too. You can undo right after.`, onYes: async () => {
     await animateOut(it.id);
     commit(() => { st().items = st().items.filter(i => i.id !== it.id); }, { type:'warning', title:'Chit deleted', body:it.name });
+    queueItemFiles(it);
   }});
+}
+
+/* ---------- announced auction date ---------- */
+let dateChit = null;
+function openAuctionDate(it){
+  dateChit = it; clearForm('auctionDateSheet');
+  const r = it.roundsDone + 1;
+  $('#adSub').textContent = `Round ${r} of ${it.members} · ${it.name}`;
+  $('#adDate').value = nextDue(it);
+  $('#adHint').textContent = `By the regular schedule this round falls on ${fmtDate(roundDate(it, r))}. Reminders will follow the date you set.`;
+  $('#adReset').classList.toggle('hidden', !announced(it));
+  openSheet('auctionDateSheet');
+}
+function saveAuctionDate(){
+  const it = dateChit; if(!it) return;
+  const v = $('#adDate').value, last = it.history[it.history.length - 1]?.date, r = it.roundsDone + 1;
+  if(setInvalid('adDateG', !v || (last && diffDays(last, v) <= 0), 'adErr', last ? `Pick a date after the last recorded round (${fmtDate(last)}).` : 'Pick a date.')) return;
+  closeSheet('auctionDateSheet');
+  commit(() => Object.assign(findItem(it.id), { nextDate:v, nextDateRound:r }), { type:'success', title:`Round ${r} set for ${fmtDate(v)}`, body:'Reminders updated to the new date.' });
+  flashCard(it.id);
+}
+function resetAuctionDate(){
+  const it = dateChit; if(!it) return;
+  closeSheet('auctionDateSheet');
+  commit(() => { const x = findItem(it.id); delete x.nextDate; delete x.nextDateRound; }, { type:'success', title:'Back to the regular schedule', body:`Round ${it.roundsDone + 1} · ${fmtDate(roundDate(it, it.roundsDone + 1))}` });
 }
 
 /* ---------- record a chit round ---------- */
@@ -895,7 +1090,7 @@ function wire(){
   catRem = makeReminderPicker($('#catRem'));
 
   $$('.nav-item').forEach(b => b.addEventListener('click', () => go(b.dataset.page)));
-  $('#sortBtn').addEventListener('click', () => { sortMode = sortMode === 'due' ? 'amount' : 'due'; $('#sortLabel').textContent = sortMode === 'due' ? 'By due date' : 'By amount'; flip($('#cardList'), renderHome); flushBars(); });
+  $('#sortBtn').addEventListener('click', () => { sortMode = sortMode === 'due' ? 'amount' : 'due'; $('#sortLabel').textContent = sortMode === 'due' ? 'Due date' : 'Amount'; flip($('#cardList'), renderHome); flushBars(); });
   $('#chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if(!b || b.dataset.f === filter) return; filter = b.dataset.f; flip($('#cardList'), renderHome); flushBars(); });
   $('#fab').addEventListener('click', () => page === 'wallet' ? openChitSheet(null) : openSheet('chooserSheet'));
   $('#chooseBill').addEventListener('click', () => { closeSheet('chooserSheet'); setTimeout(() => openBillSheet(null), 140); });
@@ -920,25 +1115,34 @@ function wire(){
     if(!circle){ renderStats(); flushBars(); } else { const d = $('#outflowDonut .donut'); if(d){ d.style.animation = 'none'; void d.offsetWidth; d.style.animation = ''; } }
   });
 
-  bindSwitch('bOngoingRow', 'bOngoing', syncBillOngoing);
+  bindSwitch('bOngoingRow', 'bOngoing', syncBillForm);
   $('#bCat').addEventListener('change', () => { if(!billRemTouched){ billRem.set(cat($('#bCat').value)?.reminders || [1]); billRem.setNote('Category default'); } });
-  $('#bDue').addEventListener('change', () => $('#bDuePast').classList.toggle('hidden', !$('#bDue').value || diffDays(T, $('#bDue').value) >= 0));
+  $('#bEvery').addEventListener('change', syncBillForm);
+  ['bTen', 'bPaidM'].forEach(id => $('#' + id).addEventListener('input', syncBillForm));
+  $('#bDue').addEventListener('change', () => { $('#bDuePast').classList.toggle('hidden', !$('#bDue').value || diffDays(T, $('#bDue').value) >= 0); syncBillForm(); });
   $('#billSave').addEventListener('click', saveBill);
   $('#billDelete').addEventListener('click', deleteBill);
+  ['#bFiles', '#cFiles'].forEach(s => $(s).addEventListener('click', attClick));
+  $('#filePicker').addEventListener('change', e => { const f = e.target.files?.[0]; if(f) attPicked(f); });
 
-  bindSwitch('cAgentFirstRow', 'cAgentFirst', chitSummary);
-  bindSwitch('cProgRow', 'cProg', on => { $('#cProgFields').classList.toggle('hidden', !on); chitSummary(); footShadow($('#chitSheet')); });
-  bindSwitch('cTakenRow', 'cTaken', on => { $('#cTakenFields').classList.toggle('hidden', !on); chitSummary(); });
-  $('#cInst').addEventListener('input', () => { instTouched = $('#cInst').value !== ''; chitSummary(); });
+  const chitChanged = () => { chitSummary(); drawRounds(); };
+  bindSwitch('cAgentFirstRow', 'cAgentFirst', chitChanged);
+  bindSwitch('cProgRow', 'cProg', on => { $('#cProgFields').classList.toggle('hidden', !on); chitChanged(); footShadow($('#chitSheet')); });
+  bindSwitch('cTakenRow', 'cTaken', on => { $('#cTakenFields').classList.toggle('hidden', !on); chitChanged(); });
+  $('#cInst').addEventListener('input', () => { instTouched = $('#cInst').value !== ''; chitChanged(); });
   ['cPot', 'cMem'].forEach(id => $('#' + id).addEventListener('input', () => {
     const p = num($('#cPot').value), m = num($('#cMem').value);
     if(!instTouched && p > 0 && m >= 2) setNum('cInst', round2(p / m));
-    chitSummary();
+    chitChanged();
   }));
-  ['cInt', 'cStart', 'cDone', 'cTakenR', 'cTakenB', 'cAgComm'].forEach(id => { $('#' + id).addEventListener('input', chitSummary); $('#' + id).addEventListener('change', chitSummary); });
+  ['cInt', 'cStart', 'cDone', 'cTakenR'].forEach(id => { $('#' + id).addEventListener('input', chitChanged); $('#' + id).addEventListener('change', chitChanged); });
+  ['cTakenB', 'cAgComm'].forEach(id => $('#' + id).addEventListener('input', chitSummary));
+  $('#cRounds').addEventListener('input', onRoundsInput);
   $('#chitSave').addEventListener('click', saveChit);
   $('#chitDelete').addEventListener('click', deleteChit);
   $('#rSave').addEventListener('click', saveRound);
+  $('#adSave').addEventListener('click', saveAuctionDate);
+  $('#adReset').addEventListener('click', resetAuctionDate);
 
   $('#emojiGrid').innerHTML = EMOJIS.map(e => `<button type="button" class="emoji-btn" data-e="${e}" aria-label="Icon ${e}">${e}</button>`).join('');
   $('#emojiGrid').addEventListener('click', e => { const b = e.target.closest('.emoji-btn'); if(!b) return; pickedEmoji = pickedEmoji === b.dataset.e ? '' : b.dataset.e; drawCatPreview(true); });
@@ -969,7 +1173,7 @@ function wire(){
   $('#palGrid').addEventListener('click', e => { const b = e.target.closest('.swatch'); if(!b || b.dataset.pal === st().settings.palette) return; withTransition(() => setSetting({ palette:b.dataset.pal })); });
   bindSeg($('#textSizeSeg'), b => setSetting({ text:b.dataset.size }));
   $('#alertsRow').addEventListener('click', () => setAlerts(!st().settings.alertsOn));
-  $('#syncPill').addEventListener('click', () => { if(syncStatus().error === 'auth') return onLogout(true); if(page !== 'profile') go('profile'); runSync(); });
+  $('#syncPill').addEventListener('click', () => { if(syncStatus().error === 'auth') return onLogout(true); if(page !== 'home') go('home'); runSync(); });
   $('#syncNowBtn').addEventListener('click', () => { if(!syncStatus().online) return toast({ type:'warning', title:'You\'re offline', body:'Changes are saved on this phone and will upload when you reconnect.' }); runSync(); });
   $('#checkUpdateBtn').addEventListener('click', async () => {
     const btn = $('#checkUpdateBtn'); setBusy(btn, true, 'Checking…');
@@ -986,6 +1190,9 @@ function wire(){
   addEventListener('resize', () => { moveAllThumbs(); moveNavInd(); });
 
   onSyncStatus(renderSync);
+  onAfterSync(() => syncFiles({ userId:user.id, items:st().items, deletes:dueFileDeletes(), clearDelete:clearFileDelete,
+    isReferenced: p => st().items.some(i => (i.files || []).some(a => a.path === p)),
+    markUploaded: (itemId, attId, path) => commit(() => { const a = findItem(itemId)?.files?.find(f => f.id === attId); if(a) a.path = path; }) }));
   onRemoteChanges(() => { applySettings(); afterChange(); });
   setInterval(() => renderSync(), 30000);
 }

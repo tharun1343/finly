@@ -9,7 +9,7 @@ export function paymentRows(items, r, mf, h){
       if(r.from && dayNum(x.date) < dayNum(r.from)) continue;
       if(r.to && dayNum(x.date) > dayNum(r.to)) continue;
       const desc = isChit ? `Round ${x.round} · ${h.histDesc(x, mf, false)}`
-        : x.opening ? `Opening balance (${x.n} months already paid)` : it.ongoing ? 'Monthly payment' : `Installment ${x.n} of ${it.tenureTotal}`;
+        : x.opening ? `Opening balance (${x.n} payments already made)` : it.ongoing ? 'Regular payment' : `Installment ${x.n} of ${it.tenureTotal}`;
       rows.push({ date:x.date, name:it.name, cat: c ? c.name : '', type: isChit ? 'Chit fund' : it.ongoing ? 'Bill' : 'EMI',
         status: it.status === 'active' ? 'Active' : 'Closed', desc, paid: isChit ? x.paid : x.amount, comm: isChit ? (x.share || 0) : 0, recv: isChit ? (x.received || 0) : 0 });
     }
@@ -20,8 +20,8 @@ export function paymentRows(items, r, mf, h){
 export function summaryRow(it, h){
   const c = h.cat(it.catId), isChit = it.kind === 'chit';
   return { name:it.name, cat: c ? c.name : '', type: isChit ? 'Chit fund' : it.ongoing ? 'Bill' : 'EMI', status: it.status === 'active' ? 'Active' : 'Closed',
-    amount: isChit ? it.installment : it.amount, per: isChit ? (it.interval === 1 ? 'round (monthly)' : `round (every ${it.interval} months)`) : 'month',
-    progress: isChit ? `${it.roundsDone} of ${it.members} rounds${it.taken ? ` · taken in round ${it.taken.round}` : ' · not taken'}` : it.ongoing ? 'Ongoing' : `${it.tenureTotal - it.tenureLeft} of ${it.tenureTotal} months paid`,
+    amount: isChit ? it.installment : it.amount, per: isChit ? (it.interval === 1 ? 'round (monthly)' : `round (every ${it.interval} months)`) : ({ 1:'month', 3:'quarter', 6:'6 months', 12:'year' }[it.every || 1]),
+    progress: isChit ? `${it.roundsDone} of ${it.members} rounds${it.taken ? ` · taken in round ${it.taken.round}` : ' · not taken'}` : it.ongoing ? 'Ongoing' : `${it.tenureTotal - it.tenureLeft} of ${it.tenureTotal} ${(it.every || 1) === 1 ? 'months' : 'payments'} paid`,
     paid: h.itemPaid(it), remaining: h.itemRemaining(it), comm: isChit ? it.commission : 0, recv: isChit && it.taken ? it.taken.received : 0,
     date: it.status === 'closed' ? `Closed ${it.closedOn}` : `Next due ${h.nextDue(it)}` };
 }

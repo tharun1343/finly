@@ -141,7 +141,7 @@
     </div>
     <div class="chips" id="chips" aria-label="Filter by category"></div>
     <div class="section-head"><div class="section-title">Active commitments <small id="activeCount"></small></div>
-      <button class="section-link" id="sortBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 6h18M6 12h12M10 18h4"/></svg><span id="sortLabel">By due date</span></button></div>
+      <button class="section-link" id="sortBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 6h18M6 12h12M10 18h4"/></svg><span id="sortLabel">Due date</span></button></div>
     <div class="card-list" id="cardList"></div>
   </section>
 
@@ -210,9 +210,9 @@
       <div class="setting-block">
         <div class="setting-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg><div><div class="setting-label">Text size</div></div></div>
         <div class="segmented" id="textSizeSeg"><div class="seg-thumb"></div>
-          <button class="seg-btn" data-size="sm" style="font-size:12px">A Small</button>
-          <button class="seg-btn sel" data-size="md" style="font-size:13.5px">A Medium</button>
-          <button class="seg-btn" data-size="lg" style="font-size:15px">A Large</button></div>
+          <button class="seg-btn" data-size="sm" style="font-size:13px">A Small</button>
+          <button class="seg-btn sel" data-size="md" style="font-size:15px">A Medium</button>
+          <button class="seg-btn" data-size="lg" style="font-size:17px">A Large</button></div>
       </div>
       <button class="setting-row" id="themeRow">
         <div class="setting-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><div><div class="setting-label">Dark mode</div></div></div>
@@ -278,15 +278,18 @@
     <div class="fgroup" id="bNameG"><label for="bName">Name *</label><input id="bName" maxlength="40" placeholder="e.g. Car Loan, Airtel Wi-Fi" autocomplete="off"><div class="ferr">Give it a name (up to 40 characters).</div></div>
     <div class="frow">
       <div class="fgroup"><label for="bCat">Category *</label><select id="bCat"></select></div>
-      <div class="fgroup" id="bAmtG"><label for="bAmt">Monthly amount *</label><div class="money-wrap"><input id="bAmt" type="text" inputmode="decimal" data-money placeholder="5,000" autocomplete="off"></div><div class="ferr">Enter ₹1 – ₹10,00,00,000.</div></div>
+      <div class="fgroup"><label for="bEvery">Pay every *</label><select id="bEvery"><option value="1">Month</option><option value="3" data-hint="Quarterly">3 months</option><option value="6" data-hint="Half-yearly">6 months</option><option value="12" data-hint="Yearly">Year</option></select></div>
     </div>
-    <div class="switch-row" id="bOngoingRow"><div><div class="sr-label">Ongoing — no end date</div><div class="sr-sub">For recharges and bills that repeat every month</div></div><span class="switch" id="bOngoing" role="switch" aria-checked="false"></span></div>
+    <div class="fgroup" id="bAmtG"><label for="bAmt" id="bAmtLabel">Amount per payment *</label><div class="money-wrap"><input id="bAmt" type="text" inputmode="decimal" data-money placeholder="5,000" autocomplete="off"></div><div class="ferr">Enter ₹1 – ₹10,00,00,000.</div></div>
+    <div class="switch-row" id="bOngoingRow"><div><div class="sr-label">Ongoing — no end date</div><div class="sr-sub">For recharges, insurance and bills that keep repeating</div></div><span class="switch" id="bOngoing" role="switch" aria-checked="false"></span></div>
     <div class="frow" id="bTenureRow">
-      <div class="fgroup" id="bTenG"><label for="bTen">Total tenure (months) *</label><input id="bTen" type="text" inputmode="numeric" data-int placeholder="36" autocomplete="off"><div class="ferr" id="bTenErr">Enter 1 – 600 months.</div></div>
-      <div class="fgroup" id="bPaidG"><label for="bPaidM">Months already paid</label><input id="bPaidM" type="text" inputmode="numeric" data-int value="0" autocomplete="off"><div class="ferr" id="bPaidErr">Must be less than the total tenure.</div></div>
+      <div class="fgroup" id="bTenG"><label for="bTen" id="bTenLabel">Total payments *</label><input id="bTen" type="text" inputmode="numeric" data-int placeholder="36" autocomplete="off"><div class="ferr" id="bTenErr">Enter 1 – 600.</div></div>
+      <div class="fgroup" id="bPaidG"><label for="bPaidM">Already paid</label><input id="bPaidM" type="text" inputmode="numeric" data-int value="0" autocomplete="off"><div class="ferr" id="bPaidErr">Must be less than the total.</div></div>
     </div>
+    <div class="fhint" id="bTenHint" style="margin:-6px 0 14px"></div>
     <div class="fgroup" id="bDueG"><label for="bDue">Next due date *</label><input id="bDue" type="date"><div class="ferr">Pick the next due date.</div><div class="fhint hidden" id="bDuePast" style="color:var(--warn)">This date has passed — the entry will show as Overdue.</div></div>
-    <div class="fgroup" style="margin-bottom:0"><span class="flabel">Remind me</span><div id="bRem"></div></div>
+    <div class="fgroup"><span class="flabel">Remind me</span><div id="bRem"></div></div>
+    <div class="fgroup" style="margin-bottom:0"><span class="flabel">Documents (up to 3 photos or PDFs)</span><div class="att-list" id="bFiles"></div></div>
   </div>
   <div class="sheet-foot"><button class="btn btn-danger hidden" id="billDelete">Delete</button><button class="btn btn-primary btn-grow" id="billSave">Save</button></div>
 </div></div>
@@ -313,22 +316,21 @@
       <div class="fgroup" id="cAgCommG"><label for="cAgComm">Agent's cut / auction</label><div class="money-wrap"><input id="cAgComm" type="text" inputmode="decimal" data-money placeholder="0" autocomplete="off"></div><div class="ferr">Must be less than the chit value.</div><div class="fhint">Kept by the agent from each winning bid.</div></div>
     </div>
     <div class="switch-row" id="cAgentFirstRow"><div><div class="sr-label">Agent takes round 1</div><div class="sr-sub">No auction in round 1 — everyone pays in full</div></div><span class="switch on" id="cAgentFirst" role="switch" aria-checked="true"></span></div>
-    <div class="switch-row" id="cProgRow"><div><div class="sr-label">This chit has already started</div><div class="sr-sub">Enter rounds done so far so the numbers start correct</div></div><span class="switch" id="cProg" role="switch" aria-checked="false"></span></div>
+    <div class="switch-row" id="cProgRow"><div><div class="sr-label">This chit has already started</div><div class="sr-sub">Enter each auction held so far</div></div><span class="switch" id="cProg" role="switch" aria-checked="false"></span></div>
     <div class="fieldset hidden" id="cProgFields">
-      <div class="fieldset-title">Progress so far</div>
-      <div class="frow">
-        <div class="fgroup" id="cDoneG"><label for="cDone">Rounds completed</label><input id="cDone" type="text" inputmode="numeric" data-int value="0" autocomplete="off"><div class="ferr" id="cDoneErr">Must be less than the no. of people.</div></div>
-        <div class="fgroup" id="cPaidG"><label for="cPaidIn">Amount you paid</label><div class="money-wrap"><input id="cPaidIn" type="text" inputmode="decimal" data-money value="0" autocomplete="off"></div><div class="ferr" id="cPaidErr">Can't exceed full payment for those rounds.</div></div>
-      </div>
-      <div class="fgroup" id="cCommSoFarG"><label for="cCommSoFar">Commission received so far</label><div class="money-wrap"><input id="cCommSoFar" type="text" inputmode="decimal" data-money value="0" autocomplete="off"></div><div class="ferr">Can't be negative.</div></div>
+      <div class="fieldset-title">Auctions held so far</div>
+      <div class="fgroup" id="cDoneG"><label for="cDone">Number of auctions held</label><input id="cDone" type="text" inputmode="numeric" data-int value="0" autocomplete="off"><div class="ferr" id="cDoneErr">Must be less than the no. of people.</div></div>
       <div class="switch-row" id="cTakenRow"><div><div class="sr-label">I've already taken the pot</div><div class="sr-sub">Moves this chit to debt</div></div><span class="switch" id="cTaken" role="switch" aria-checked="false"></span></div>
       <div class="frow hidden" id="cTakenFields">
         <div class="fgroup" id="cTakenRG"><label for="cTakenR">Taken in round</label><input id="cTakenR" type="text" inputmode="numeric" data-int autocomplete="off"><div class="ferr" id="cTakenRErr">Pick a completed round.</div></div>
         <div class="fgroup" id="cTakenBG"><label for="cTakenB">Your winning bid</label><div class="money-wrap"><input id="cTakenB" type="text" inputmode="decimal" data-money value="0" autocomplete="off"></div><div class="ferr">Must be less than the chit value.</div></div>
       </div>
+      <div class="rounds-list" id="cRounds"></div>
+      <div class="rounds-total" id="cRoundsTotal"></div>
     </div>
     <div class="summary-box" id="chitSummary">Fill in the value, people and start date to see the schedule.</div>
-    <div class="fgroup" style="margin-bottom:0"><span class="flabel">Remind me before each round</span><div id="cRem"></div></div>
+    <div class="fgroup"><span class="flabel">Remind me before each round</span><div id="cRem"></div></div>
+    <div class="fgroup" style="margin-bottom:0"><span class="flabel">Documents (up to 3 photos or PDFs)</span><div class="att-list" id="cFiles"></div></div>
   </div>
   <div class="sheet-foot"><button class="btn btn-danger hidden" id="chitDelete">Delete</button><button class="btn btn-primary btn-grow" id="chitSave">Save</button></div>
 </div></div>
@@ -413,6 +415,22 @@
   </div></div>
   <div class="sheet-foot"><button class="btn btn-primary btn-grow" data-close>Got it</button></div>
 </div></div>
+
+<div class="sheet-overlay" id="auctionDateSheet"><div class="sheet">
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title">Next auction date</div><div class="sheet-sub" id="adSub">Set the date once the agent announces it.</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-scroll">
+    <div class="fgroup" id="adDateG"><label for="adDate">Auction date</label><input id="adDate" type="date"><div class="ferr" id="adErr">Pick a date after the last recorded round.</div></div>
+    <div class="fhint" id="adHint"></div>
+  </div>
+  <div class="sheet-foot"><button class="btn btn-secondary hidden" id="adReset">Use schedule</button><button class="btn btn-primary btn-grow" id="adSave">Save date</button></div>
+</div></div>
+
+<div class="sheet-overlay" id="filesSheet"><div class="sheet">
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="fsTitle">Documents</div><div class="sheet-sub">Tap a file to open it.</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-scroll no-foot"><div class="att-list" id="fsList"></div></div>
+</div></div>
+
+<input type="file" id="filePicker" accept="image/*,application/pdf" class="hidden">
 
 <div class="sheet-overlay" id="confirmSheet"><div class="sheet">
   <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="cfTitle">Are you sure?</div><div class="sheet-sub" id="cfBody"></div></div></div></div>
