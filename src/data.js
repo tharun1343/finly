@@ -17,7 +17,7 @@ export function storedUser(){
     const s = raw && JSON.parse(raw);
     let u = s && (s.user || s.currentSession?.user);
     if(!u){ const ru = localStorage.getItem(AUTH_KEY + '-user'); u = ru && JSON.parse(ru)?.user; }
-    return u ? { id:u.id, email:u.email, name:u.user_metadata?.name || '' } : null;
+    return u ? { id:u.id, email:u.email, name:u.user_metadata?.name || '', phone:u.user_metadata?.phone || '' } : null;
   }catch{ return null; }
 }
 
@@ -31,9 +31,10 @@ function classify(err){
   if(err?.code === 'otp_expired' || /expired|invalid/i.test(msg)) return new AuthFailure('invalid', 'That code is wrong or has expired.');
   return new AuthFailure('other', msg || 'Something went wrong. Please try again.');
 }
-export async function sendCode(email, name){
+export async function sendCode(email, name, phone){
   try{
-    const { error } = await supabase.auth.signInWithOtp({ email, options:{ shouldCreateUser:true, data: name ? { name } : undefined } });
+    const meta = name || phone ? { ...(name ? { name } : {}), ...(phone ? { phone } : {}) } : undefined;
+    const { error } = await supabase.auth.signInWithOtp({ email, options:{ shouldCreateUser:true, data: meta } });
     if(error) throw error;
   }catch(e){ throw classify(e); }
 }
@@ -42,7 +43,7 @@ export async function verifyCode(email, token){
     const { data, error } = await supabase.auth.verifyOtp({ email, token, type:'email' });
     if(error) throw error;
     const u = data.user || data.session?.user;
-    return { id:u.id, email:u.email, name:u.user_metadata?.name || '' };
+    return { id:u.id, email:u.email, name:u.user_metadata?.name || '', phone:u.user_metadata?.phone || '' };
   }catch(e){ throw classify(e); }
 }
 export async function signOut(){
@@ -52,7 +53,7 @@ export async function signOut(){
 
 /* ---------------- local store ---------------- */
 export const DEFAULT_SETTINGS = { name:'', income:null, theme:'dark', text:'md', alertsOn:true, palette:'sapphire', onboarded:false, banks:[],
-  company:'', dob:'', pin:'', city:'', state:'', avatar:null, bold:false };
+  company:'', dob:'', pin:'', city:'', state:'', avatar:null, bold:false, whatsapp:'' };
 const sub = (id, name, emoji) => ({ id, name, emoji });
 /** Default types for the built-in bill categories. */
 export const DEFAULT_SUBS = {

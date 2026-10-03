@@ -1,4 +1,5 @@
-import { Capacitor, SystemBars, SystemBarsStyle } from '@capacitor/core';
+import { Capacitor, SystemBars, SystemBarsStyle, registerPlugin } from '@capacitor/core';
+import { FileOpener } from '@capacitor-community/file-opener';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
@@ -56,7 +57,7 @@ export async function requestNotifyPermission(){
 }
 export function onNotificationTap(cb){
   if(!isNative) return;
-  LocalNotifications.addListener('localNotificationActionPerformed', a => cb(a.notification?.extra?.itemId));
+  LocalNotifications.addListener('localNotificationActionPerformed', a => { const x = a.notification?.extra || {}; cb(x.plan ? '__plan:' + x.plan : x.itemId); });
 }
 
 /** Exact alarms fire on time even in battery saver; Finly declares USE_EXACT_ALARM so Android grants them. */
@@ -83,12 +84,32 @@ export async function testNotification(){
   return 'sent';
 }
 
+/* ---------- monthly plan: 9 PM on the last day of each month ---------- */
+const PLAN_NOTIF_ID = 900003;
+export async function schedulePlanNotice(enabled){
+  if(!isNative) return;
+  try{
+    await LocalNotifications.cancel({ notifications:[{ id:PLAN_NOTIF_ID }] });
+    if(!enabled || (await notifyPermission()) !== 'granted') return;
+    await ensureChannel();
+    const now = new Date();
+    let at = new Date(now.getFullYear(), now.getMonth() + 1, 0, 21, 0, 0);          // last day of this month, 9 PM
+    if(at.getTime() <= now.getTime() + 60000) at = new Date(now.getFullYear(), now.getMonth() + 2, 0, 21, 0, 0);
+    const next = new Date(at.getFullYear(), at.getMonth() + 1, 1);
+    const key = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
+    const month = next.toLocaleDateString('en-IN', { month:'long' });
+    await LocalNotifications.schedule({ notifications:[{ id:PLAN_NOTIF_ID, channelId:CHANNEL, title:`Your ${month} plan is ready`,
+      body:'Tap to see what\'s due next month and share it on WhatsApp.', schedule:{ at, allowWhileIdle:true }, isExactNotification: await exactAllowed(),
+      smallIcon:'ic_stat_finly', extra:{ plan:key } }] });
+  }catch(e){ console.warn('Plan reminder failed', e); }
+}
+
 let schedTimer = null;
 /** Rebuild every pending reminder from the current data (cheap: ≤ 64 alarms). */
 export function scheduleReminders(build){ clearTimeout(schedTimer); schedTimer = setTimeout(() => doSchedule(build).catch(e => console.warn('Reminder scheduling failed', e)), 800); }
 async function doSchedule(build){
   if(!isNative) return;
-  const pending = (await LocalNotifications.getPending()).notifications.filter(n => n.id !== UPDATE_NOTIF_ID && n.id !== 900002);
+  const pending = (await LocalNotifications.getPending()).notifications.filter(n => n.id !== UPDATE_NOTIF_ID && n.id !== 900002 && n.id !== PLAN_NOTIF_ID);
   if(pending.length) await LocalNotifications.cancel({ notifications: pending.map(n => ({ id:n.id })) });
   const { enabled, entries } = build();
   if(!enabled || (await notifyPermission()) !== 'granted') return;
@@ -172,3 +193,33 @@ export async function checkForUpdate(){
   return { latest, available, required: available && verNum(latest)[0] > verNum(APP_VERSION)[0] };
 }
 export function openExternal(url){ window.open(url, '_blank', 'noopener'); }
+
+/* ---------- Finly's own Android helpers (android/.../FinlySystemPlugin.java) ---------- */
+const System = registerPlugin('FinlySystem');
+const safe = async (fn, fallback) => { if(!isNative) return fallback; try{ return await fn(); }catch{ return fallback; } };
+export const batteryUnrestricted = () => safe(async () => (await System.batteryStatus()).unrestricted, true);
+export const askBatteryUnrestricted = () => safe(async () => (await System.requestBatteryExemption()).unrestricted, false);
+export const canInstallUpdates = () => safe(async () => (await System.installStatus()).allowed, false);
+export const allowInstallUpdates = () => safe(async () => (await System.openInstallSettings()).allowed, false);
+export const contactsPermission = () => safe(async () => (await System.checkPermissions()).contacts, 'denied');
+export const askContactsPermission = () => safe(async () => (await System.requestPermissions({ permissions:['contacts'] })).contacts, 'denied');
+/** Opens the phone's contact list. Resolves { name, phones:[{ number, label, primary }] }, or null if cancelled. */
+export async function pickContact(){
+  if(!isNative) return null;
+  const r = await System.pickContact();
+  return r.cancelled ? null : r;
+}
+export const setLauncherIcon = name => safe(() => System.setLauncherIcon({ name }), null);
+export const deviceInfo = () => safe(() => System.deviceInfo(), null);
+
+/** Downloads the update APK with progress (0–1), then opens Android's installer. */
+export async function downloadAndInstall(url, onProgress){
+  let handle = null;
+  try{
+    handle = await Filesystem.addListener('progress', p => { if(p.contentLength > 0) onProgress(Math.min(1, p.bytes / p.contentLength)); });
+    await Filesystem.downloadFile({ url, path:'finly-update.apk', directory: Directory.Cache, progress:true, recursive:true });
+    onProgress(1);
+    const { uri } = await Filesystem.getUri({ path:'finly-update.apk', directory: Directory.Cache });
+    await FileOpener.open({ filePath: uri, contentType:'application/vnd.android.package-archive', openWithDefault:true });
+  } finally { handle?.remove(); }
+}

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com https://ifsc.razorpay.com https://api.postalpincode.in; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com https://ifsc.razorpay.com https://api.postalpincode.in https://ipwho.is; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
 <meta name="theme-color" content="#0A0F1D">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./icons/icon-180.png">
@@ -20,6 +20,8 @@
 <div class="boot" id="boot"><div class="brand-mark"><img src="./favicon.svg" alt="Finly"></div></div>
 <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 <div class="info-pop" id="infoPop" role="tooltip"></div>
+<div class="coach hidden" id="coach" aria-live="polite"><div class="coach-hole" id="coachHole"></div><div class="coach-tip" id="coachTip"><div class="coach-arrow" id="coachArrow"></div><b id="coachTitle"></b><span id="coachText"></span></div></div>
+
 <div class="force-update hidden" id="forceUpdate" role="alertdialog" aria-labelledby="fuTitle">
   <div class="fu-card">
     <div class="brand-mark fu-mark"><img src="./favicon.svg" alt=""></div>
@@ -52,6 +54,22 @@
     </div>
   </section>
 
+  <section class="auth-screen" id="scr-perms">
+    <h1 class="auth-title">A few permissions</h1>
+    <p class="auth-sub">So reminders reach you on time, even when Finly is closed.</p>
+    <div class="perm-list">
+      <div class="perm-row" id="permNotify"><img class="e3d perm-ic" src="./e3d/1f514.webp" alt="" draggable="false"><div class="perm-txt"><b>Notifications</b><span>Reminders before EMIs, chit rounds and ledger dues</span></div><button type="button" class="btn btn-secondary btn-sm perm-btn">Allow</button></div>
+      <div class="perm-row" id="permBattery"><img class="e3d perm-ic" src="./e3d/1f50b.webp" alt="" draggable="false"><div class="perm-txt"><b>Battery: unrestricted</b><span>Stops Android from blocking reminders in the background</span></div><button type="button" class="btn btn-secondary btn-sm perm-btn">Allow</button></div>
+      <div class="perm-row" id="permContacts"><img class="e3d perm-ic" src="./e3d/1f465.webp" alt="" draggable="false"><div class="perm-txt"><b>Contacts</b><span>Pick people for Ledger entries — only when you choose one</span></div><button type="button" class="btn btn-secondary btn-sm perm-btn">Allow</button></div>
+      <div class="perm-row" id="permInstall"><img class="e3d perm-ic" src="./e3d/1f4e5.webp" alt="" draggable="false"><div class="perm-txt"><b>Install updates</b><span>Lets Finly install its own updates inside the app</span></div><button type="button" class="btn btn-secondary btn-sm perm-btn">Allow</button></div>
+    </div>
+    <p class="perm-note">Camera and files are asked only when you attach a document.</p>
+    <div class="btn-stack">
+      <button class="btn btn-primary btn-block" id="permAll">Allow all</button>
+      <button class="btn btn-outline btn-block" id="permDone">Continue</button>
+    </div>
+  </section>
+
   <section class="auth-screen" id="scr-signup">
     <button class="back-btn" data-auth="welcome"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>Back</button>
     <h1 class="auth-title">Create your account</h1>
@@ -66,6 +84,11 @@
         <div class="input-wrap"><svg class="lead-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="m22 7-10 6L2 7"/></svg>
         <input id="suEmail" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com"></div>
         <div class="ferr">Enter a valid email address.</div></div>
+      <div class="fgroup" id="suPhoneG"><label for="suPhone">WhatsApp number</label>
+        <div class="input-wrap"><svg class="lead-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/></svg>
+        <input id="suPhone" type="tel" autocomplete="tel" inputmode="tel" maxlength="16" placeholder="98765 43210"></div>
+        <div class="ferr">Enter your WhatsApp number (10 digits, or with country code).</div>
+        <div class="fhint">Used to share your monthly plan and to connect ledger entries with friends.</div></div>
       <button class="btn btn-primary btn-block" type="submit" id="suBtn">Send code</button>
     </form>
     <div class="auth-foot have-code hidden"><button class="link-btn" data-resume-otp>I already have a code</button></div>
@@ -152,7 +175,7 @@
       </div>
       <div class="hero-stats">
         <button class="mini-stat" id="incomeTile"><div class="ms-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--primary)"><path d="M12 19V5M5 12l7-7 7 7"/></svg>Income</div><div class="ms-value" id="msIncome">₹0</div></button>
-        <div class="mini-stat"><div class="ms-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--rose)"><path d="M12 5v14M5 12l7 7 7-7"/></svg>Outflow</div><div class="ms-value" id="msOut">₹0</div></div>
+        <button class="mini-stat ms-link" id="outflowTile" aria-label="See monthly outflow by category"><div class="ms-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--rose)"><path d="M12 5v14M5 12l7 7 7-7"/></svg>Outflow<svg class="ms-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m9 18 6-6-6-6"/></svg></div><div class="ms-value" id="msOut">₹0</div></button>
         <div class="mini-stat"><div class="ms-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--gold)"><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2V5z"/></svg>Savings</div><div class="ms-value" id="msSave">₹0</div></div>
       </div>
     </div>
@@ -179,7 +202,7 @@
   <section class="screen" id="screen-stats">
     <button class="back-btn" id="statsBack" style="margin:0 0 10px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>Profile</button>
     <div class="section-head" style="margin-top:4px"><div class="section-title">Stats &amp; insights</div>
-      <button class="btn-chip export" data-export-all><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export</button></div>
+      <button class="btn-chip export" data-export-all><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 16V4m0 0-4 4m4-4 4 4M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>Export</button></div>
     <div class="card">
       <div class="card-top">
         <div class="card-title">Monthly outflow <button type="button" class="info-i" data-info="What you pay each month, split by category. Only active items count; quarterly, half-yearly and yearly payments are spread per month." aria-label="More info">i</button></div>
@@ -209,7 +232,7 @@
   <!-- WALLET -->
   <section class="screen" id="screen-wallet">
     <div class="section-head" style="margin-top:4px"><div class="section-title">Chits &amp; savings <button type="button" class="info-i" id="howBtn" aria-label="How chit funds work">i</button></div>
-      <button class="btn-chip export" data-export-all><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export</button></div>
+      <button class="btn-chip export" data-export-all><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 16V4m0 0-4 4m4-4 4 4M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>Export</button></div>
     <div class="wallet-hero">
       <div class="wh-card save"><img class="e3d wh-ic" src="./e3d/1f4b0.webp" alt="" draggable="false"><div class="label-caps">Savings</div><div class="wh-value" id="whSave">₹0</div><div class="wh-foot" id="whSaveFoot">—</div></div>
       <div class="wh-card debt"><img class="e3d wh-ic" src="./e3d/1f4b8.webp" alt="" draggable="false"><div class="label-caps">Chit debt</div><div class="wh-value" id="whDebt">₹0</div><div class="wh-foot" id="whDebtFoot">—</div></div>
@@ -230,6 +253,14 @@
     <div class="card list" style="margin:14px 0 6px">
       <button class="setting-row" id="openStats">
         <div class="setting-left"><img class="e3d set-ic" src="./e3d/1f4ca.webp" alt="" draggable="false"><div><div class="setting-label">Stats &amp; insights</div><div class="setting-sub">Monthly outflow, debt vs savings, income</div></div></div>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
+      <button class="setting-row" id="openPlan">
+        <div class="setting-left"><img class="e3d set-ic" src="./e3d/1f5d3.webp" alt="" draggable="false"><div><div class="setting-label">Monthly plan image</div><div class="setting-sub">Next month's dues as one image to share on WhatsApp</div></div></div>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
+      <button class="setting-row" id="openDevices">
+        <div class="setting-left"><img class="e3d set-ic" src="./e3d/1f4f2.webp" alt="" draggable="false"><div><div class="setting-label">Devices</div><div class="setting-sub" id="devicesSub">Phones and browsers signed in to your account</div></div></div>
         <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg>
       </button>
     </div>
@@ -312,7 +343,7 @@
             <button class="btn btn-secondary btn-sm" id="checkUpdateBtn">Check for update</button>
           </div>
         </div>
-        <p class="credit">3D icons: Fluent Emoji by Microsoft (MIT).</p>
+        <p class="credit">© 2026 Finly. All rights reserved. · <button type="button" class="link-btn" id="licencesBtn" data-info="3D icons: Fluent Emoji © Microsoft Corporation, MIT License. Bank logos belong to their respective banks.">Licences</button></p>
       </div></div>
     </div>
 
@@ -321,6 +352,7 @@
 
   <button class="fab" id="fab" aria-label="Add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></button>
 
+  <div class="nav-shield" aria-hidden="true"></div>
   <nav class="bottom-nav" id="bottomNav">
     <span class="nav-ind" id="navInd"></span>
     <button class="nav-item active" data-page="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/></svg><span class="nav-label">Home</span></button>
@@ -450,6 +482,8 @@
   <div class="sheet-scroll">
     <div class="form-alert" id="pfAlert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><span></span></div>
     <div class="fgroup" id="pfNameG"><label for="pfNameIn">Name</label><input id="pfNameIn" maxlength="40" autocomplete="name"><div class="ferr">Tell us what to call you.</div></div>
+    <div class="fgroup" id="pfPhoneG"><label for="pfPhone">WhatsApp number <span class="req">*</span></label><div class="input-wrap"><img class="e3d lead-3d" src="./e3d/1f4f1.webp" alt="" draggable="false"><input id="pfPhone" type="tel" inputmode="tel" maxlength="16" placeholder="98765 43210" autocomplete="tel"></div>
+      <div class="ferr" id="pfPhoneErr">Enter your WhatsApp number (10 digits, or with country code).</div><div class="fhint">For your monthly plan and shared ledger entries. Without a country code it's taken as +91.</div></div>
     <div class="fgroup"><label for="pfCompany">Company</label><div class="input-wrap"><img class="e3d lead-3d" src="./e3d/1f3e2.webp" alt="" draggable="false"><input id="pfCompany" maxlength="60" placeholder="Where you work (optional)" autocomplete="organization"></div></div>
     <div class="frow">
       <div class="fgroup" id="pfDobG"><label for="pfDob">Date of birth</label><input id="pfDob" type="date" min="1900-01-01"><div class="ferr">Pick a date in the past.</div></div>
@@ -555,12 +589,66 @@
   <div class="sheet-foot"><button class="btn btn-danger hidden" id="bkDelete">Delete</button><button class="btn btn-primary btn-grow" id="bkSave">Add bank account</button></div>
 </div></div>
 
+<div class="sheet-overlay" id="updSheet"><div class="sheet">
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="upTitle">Updating Finly</div><div class="sheet-sub" id="upSub"></div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-scroll no-foot">
+    <div class="upd-box">
+      <div class="upd-pct" id="upPct">0%</div>
+      <div class="track upd-track"><div class="bar" id="upBar" style="width:0"></div></div>
+      <p class="upd-msg" id="upMsg">Preparing the download…</p>
+      <button class="btn btn-primary btn-block hidden" id="upAllow">Allow installing updates</button>
+      <button class="btn btn-secondary btn-block hidden" id="upRetry">Try again</button>
+    </div>
+  </div>
+</div></div>
+
+<div class="sheet-overlay" id="devicesSheet"><div class="sheet">
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title">Devices</div><div class="sheet-sub">Signed in to your account · location is approximate</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-scroll">
+    <div class="dev-list" id="devList"></div>
+  </div>
+  <div class="sheet-foot"><button class="btn btn-danger btn-grow" id="devOthers">Sign out all other devices</button></div>
+</div></div>
+
+<div class="sheet-overlay" id="planSheet"><div class="sheet">
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="plTitle">Monthly plan</div><div class="sheet-sub" id="plSub"></div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-scroll">
+    <div class="segmented" id="plMonth" style="margin-bottom:14px"><div class="seg-thumb"></div><button type="button" class="seg-btn" data-m="0">This month</button><button type="button" class="seg-btn sel" data-m="1">Next month</button></div>
+    <div class="plan-img-wrap"><img id="plImg" alt="Monthly plan"></div>
+  </div>
+  <div class="sheet-foot"><button class="btn btn-secondary" id="plSave">Save</button><button class="btn btn-wa btn-grow" id="plShare">Share to WhatsApp</button></div>
+</div></div>
+
+<div class="sheet-overlay" id="outflowSheet"><div class="sheet">
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title">Monthly outflow</div><div class="sheet-sub" id="ofSub"></div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-scroll no-foot">
+    <div class="of-tabs" id="ofTabs" role="tablist"></div>
+    <div id="ofList"></div>
+  </div>
+</div></div>
+
+<div class="sheet-overlay" id="phonePickSheet"><div class="sheet">
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="ppTitle">Choose a number</div><div class="sheet-sub">This contact has more than one number. Which one is primary?</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-scroll no-foot"><div id="ppList"></div></div>
+</div></div>
+
+<div class="sheet-overlay" id="whatsNewSheet"><div class="sheet">
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title">What's new in Finly 2.0</div><div class="sheet-sub">A quick look at the changes</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-scroll">
+    <div class="wn-list" id="wnList"></div>
+  </div>
+  <div class="sheet-foot"><button class="btn btn-secondary" data-close>Later</button><button class="btn btn-primary btn-grow" id="wnGo">Add contacts in Ledger</button></div>
+</div></div>
+
 <div class="sheet-overlay" id="lendSheet"><div class="sheet">
   <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="lTitle">Add to ledger</div><div class="sheet-sub">Fields marked <span class="req">*</span> are required.</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
   <div class="sheet-scroll">
     <div class="form-alert" id="lendAlert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><span></span></div>
     <div class="segmented" id="lDir" style="margin-bottom:16px"><div class="seg-thumb"></div><button type="button" class="seg-btn sel" data-dir="lent">I gave money</button><button type="button" class="seg-btn" data-dir="borrowed">I borrowed money</button></div>
-    <div class="fgroup" id="lNameG"><label for="lName" id="lNameLabel">Given to <span class="req">*</span></label><input id="lName" maxlength="40" placeholder="e.g. Ravi" autocomplete="off"><div class="ferr">Enter a name (up to 40 characters).</div></div>
+    <div class="fgroup" id="lNameG"><label for="lName" id="lNameLabel">Given to <span class="req">*</span></label>
+      <div class="name-row"><input id="lName" maxlength="40" placeholder="e.g. Ravi" autocomplete="off"><button type="button" class="contact-btn" id="lPick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="10" cy="8" r="4"/><path d="M3 21c1.2-4 4-5.5 7-5.5 1.6 0 3.1.4 4.3 1.3M19 14v6M16 17h6"/></svg>Choose contact</button></div>
+      <div class="ferr">Enter a name (up to 40 characters).</div></div>
+    <div class="fgroup" id="lPhoneG"><label for="lPhone">Mobile / WhatsApp number</label><input id="lPhone" type="tel" inputmode="tel" maxlength="16" placeholder="Optional — links the entry if they use Finly" autocomplete="off"><div class="ferr">Enter a valid number (10 digits, or with country code).</div><div class="fhint" id="lShareHint"></div></div>
     <div class="fgroup"><label for="lNote">What for</label><input id="lNote" maxlength="60" placeholder="e.g. Hand loan, medical, wedding" autocomplete="off"></div>
     <div class="frow">
       <div class="fgroup" id="lAmtG"><label for="lAmt">Amount <span class="req">*</span></label><div class="money-wrap"><input id="lAmt" type="text" inputmode="decimal" data-money placeholder="50,000" autocomplete="off"></div><div class="ferr">Enter ₹1 – ₹10,00,00,000.</div></div>

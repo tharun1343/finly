@@ -2,6 +2,7 @@ import { $, $$, esc, EMAIL_RE, mmss, num } from './util.js';
 import { sendCode, verifyCode } from './data.js';
 import { toast, setInvalid, showAlert, clearForm, setBusy, bindSwitch, isOn, setSwitch, setNum } from './ui.js';
 import { isNative } from './native.js';
+import { normPhone, PHONE_RE } from './cloud.js';
 
 const OTP_TTL = 10 * 60 * 1000, RESEND_WAIT = 60 * 1000, MAX_TRIES = 3, LOCK_MS = 60 * 1000;
 const otp = { email:'', name:'', from:'signin', sentAt:0, expiresAt:0, tries:0, lockedUntil:0, verifying:false, timer:null };
@@ -33,14 +34,14 @@ const boxes = () => $$('.otp-box');
 function otpStatus(kind, msg){ const s = $('#otpStatus'); s.className = 'otp-status ' + kind; s.textContent = msg; }
 function maskEmail(e){ const [u, d] = e.split('@'); return (u.length <= 2 ? u[0] + '•' : u[0] + '•••' + u.slice(-1)) + '@' + d; }
 
-async function requestCode(from, email, name, btn){
+async function requestCode(from, email, name, btn, phone){
   const alertId = from === 'signup' ? 'signupAlert' : 'signinAlert';
   showAlert(alertId, '');
   if(email === otp.email && otpPending() && Date.now() - otp.sentAt < RESEND_WAIT){ otp.from = from; openOtp(); return; }
   setBusy(btn, true, 'Sending code…');
   try{
-    await sendCode(email, name);
-    Object.assign(otp, { email, name, from, sentAt:Date.now(), expiresAt:Date.now() + OTP_TTL, tries:0, lockedUntil:0 });
+    await sendCode(email, name, phone);
+    Object.assign(otp, { email, name, phone, from, sentAt:Date.now(), expiresAt:Date.now() + OTP_TTL, tries:0, lockedUntil:0 });
     openOtp();
   }catch(e){
     showAlert(alertId, e.message);
@@ -73,7 +74,7 @@ function tick(){
 async function resend(){
   const rb = $('#resendBtn'); rb.disabled = true; rb.textContent = 'Sending…';
   try{
-    await sendCode(otp.email, otp.name);
+    await sendCode(otp.email, otp.name, otp.phone);
     Object.assign(otp, { sentAt:Date.now(), expiresAt:Date.now() + OTP_TTL, tries:0, lockedUntil:0, expiredShown:false });
     openOtp();
     toast({ type:'success', title:'New code sent', body:`Check ${maskEmail(otp.email)}` });
@@ -146,9 +147,9 @@ export function initAuth(h){
   }));
   $('#signupForm').addEventListener('submit', e => {
     e.preventDefault(); clearForm('scr-signup');
-    const name = $('#suName').value.trim(), email = $('#suEmail').value.trim().toLowerCase();
-    const bad = setInvalid('suNameG', !name) + setInvalid('suEmailG', !EMAIL_RE.test(email));
-    if(!bad) requestCode('signup', email, name, $('#suBtn'));
+    const name = $('#suName').value.trim(), email = $('#suEmail').value.trim().toLowerCase(), phone = normPhone($('#suPhone').value);
+    const bad = setInvalid('suNameG', !name) + setInvalid('suEmailG', !EMAIL_RE.test(email)) + setInvalid('suPhoneG', !PHONE_RE.test(phone));
+    if(!bad) requestCode('signup', email, name, $('#suBtn'), phone);
   });
   $('#signinForm').addEventListener('submit', e => {
     e.preventDefault(); clearForm('scr-signin');

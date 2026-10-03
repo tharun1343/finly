@@ -15,6 +15,7 @@ export const E3D = {
   '🚪':'Door', '💸':'Money with wings', '🚀':'Rocket', '📬':'Open mailbox with raised flag', '👤':'Bust in silhouette',
   '📍':'Round pushpin', '🏢':'Office building', '🎂':'Birthday cake', '📈':'Chart increasing', '📉':'Chart decreasing',
   '🧮':'Abacus', '🗓️':'Spiral calendar', '📷':'Camera', '🔒':'Locked', '🎉':'Party popper', '⚙️':'Gear', '📤':'Outbox tray',
+  '🔋':'Battery', '👥':'Busts in silhouette', '📥':'Inbox tray', '⚡':'High voltage', '📲':'Mobile phone with arrow',
   // avatars
   '😎':'Smiling face with sunglasses', '🤓':'Nerd face', '🥳':'Partying face', '😇':'Smiling face with halo', '🙂':'Slightly smiling face',
   '🦁':'Lion', '🐯':'Tiger face', '🐼':'Panda', '🦊':'Fox', '🐨':'Koala', '🦄':'Unicorn', '🐶':'Dog face', '🐱':'Cat face',
