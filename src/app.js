@@ -3,7 +3,7 @@ import { PALETTES, TOKEN_MAP, paletteVars, swatchStyle, palKey, isPitch } from '
 import { store, commitState, replaceState, onSyncStatus, syncStatus, scheduleSync, runSync, onRemoteChanges, pendingCount, queueFileDelete, clearFileDelete, dueFileDeletes, onAfterSync } from './data.js';
 import { MAX_FILES, prepareFile, putLocal, thumbUrl, openAttachment, openBlob, syncFiles, FileError } from './files.js';
 import { toast, layoutFab, openSheet, closeSheet, confirmBox, setInvalid, showAlert, clearForm, scrollToError, setBusy, bindSwitch, setSwitch, isOn,
-  moveThumb, bindSeg, moveAllThumbs, openStack, setNum, bindNumeric, enhanceSelect, setSelect, setSelectIcons, makeReminderPicker, remSummary, withTransition, flip, handleBackInOverlays, footShadow, fmtNumInput } from './ui.js';
+  moveThumb, bindSeg, moveAllThumbs, openStack, skel, setNum, bindNumeric, enhanceSelect, setSelect, setSelectIcons, makeReminderPicker, remSummary, withTransition, flip, handleBackInOverlays, footShadow, fmtNumInput } from './ui.js';
 import { isNative, APP_VERSION, APK_URL, setBarsStyle, scheduleReminders, notifyPermission, requestNotifyPermission, saveFile, checkForUpdate, openExternal, notifyUpdate, prepareUpdateChannel, testNotification,
   canInstallUpdates, allowInstallUpdates, downloadAndInstall, pickContact, setLauncherIcon, schedulePlanNotice } from './native.js';
 import { paymentRows, summaryRow, buildCsv, buildPdf } from './export.js';
@@ -237,7 +237,7 @@ function renderHome(){
   $('#activeCount').textContent = list.length ? `(${list.length})` : '';
   $('#sortBtn').classList.toggle('hidden', list.length < 2);
   $('#cardList').innerHTML = list.length ? list.map((it, i) => it.kind === 'chit' ? chitCompact(it, i) : billCard(it, i)).join('')
-    : `<div class="empty"><div class="em">${e3d('🗂️')}</div><b>Nothing tracked yet</b>Add your EMIs, bills and chit funds to see what's due and when you'll be debt-free.
+    : firstLoad() ? skel.cards(2) : `<div class="empty"><div class="em">${e3d('🗂️')}</div><b>Nothing tracked yet</b>Add your EMIs, bills and chit funds to see what's due and when you'll be debt-free.
        <div class="empty-actions"><button class="btn btn-primary btn-sm" data-empty="bill">Add EMI or bill</button><button class="btn btn-secondary btn-sm" data-empty="chit">Add chit fund</button></div></div>`;
 }
 
@@ -314,7 +314,7 @@ function renderWallet(){
   $('#whSaveFoot').textContent = `${t.savingCount} not taken · +${fmtMoney(t.savingComm)} commission`;
   $('#whDebtFoot').textContent = `${t.takenCount} taken · full amount each round`;
   const chits = activeItems().filter(i => i.kind === 'chit');
-  $('#chitList').innerHTML = chits.length ? chits.map(chitDetail).join('') : `<div class="empty"><div class="em">${e3d('🤝')}</div><b>No active chit funds</b>Tap + to add one.</div>`;
+  $('#chitList').innerHTML = chits.length ? chits.map(chitDetail).join('') : firstLoad() ? skel.cards(1) : `<div class="empty"><div class="em">${e3d('🤝')}</div><b>No active chit funds</b>Tap + to add one.</div>`;
   const cl = closedItems();
   $('#closedCount').textContent = cl.length ? `(${cl.length})` : '';
   $('#closedList').innerHTML = cl.length ? cl.map(it => { const c = cat(it.catId);
@@ -361,6 +361,14 @@ function renderSync(s = syncStatus()){
   $('#syncSub').textContent = `Last synced ${ago(s.lastSync)}`;
 }
 
+/** True while a new device downloads the account's data for the first time. */
+const firstLoad = () => !store.meta?.lastSync && syncStatus().running;
+let wasFirstLoad = false;
+function onSyncChange(sx){
+  renderSync(sx);
+  const fl = firstLoad();
+  if(fl !== wasFirstLoad){ wasFirstLoad = fl; renderHome(); renderWallet(); renderLedger(); flushBars(); }
+}
 function render(){ renderHeader(); renderHome(); renderStats(); renderLedger(); renderWallet(); renderProfile(); renderBell(); renderSync(); flushBars(); queueFabCheck(); }
 
 export function applySettings(){
@@ -519,17 +527,21 @@ const fmtSize = n => n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB'
 function attStart(rootId, alertId, files){ att.root = $('#' + rootId); att.alertId = alertId; att.list = clone(files || []); att.fresh = new Map(); att.removed = []; drawAtt(); }
 function attRow(a, removable){
   const img = /^image\//.test(a.type);
-  return `<div class="att-item" data-att="${a.id}" role="button" tabindex="0"><span class="att-thumb ${img ? 'img' : ''}">${img ? '🖼️' : 'PDF'}</span>
+  return `<div class="att-item" data-att="${a.id}" role="button" tabindex="0"><span class="att-thumb ${img ? 'img skel' : ''}">${img ? '' : 'PDF'}</span>
     <span style="min-width:0;flex:1"><span class="att-name">${esc(a.name)}</span><span class="att-sub">${img ? 'Photo' : 'PDF'} · ${fmtSize(a.size)}${a.path ? '' : ' · uploads when online'}</span></span>
     ${removable ? `<button type="button" class="att-x" data-att-x="${a.id}" aria-label="Remove ${esc(a.name)}">${ICON.x}</button>` : ''}</div>`;
 }
+/** Shimmers a row while its file downloads/opens. */
+function withRowLoading(row, promise){ row.classList.add('row-loading'); return promise.finally(() => row.classList.remove('row-loading')); }
 async function fillThumbs(root, list, fresh){
   for(const a of list){
     if(!/^image\//.test(a.type)) continue;
     const b = fresh?.get(a.id);
-    const url = b ? URL.createObjectURL(b) : await thumbUrl(a);
+    const url = b ? URL.createObjectURL(b) : await thumbUrl(a).catch(() => null);
     const t = root.querySelector(`[data-att="${a.id}"] .att-thumb`);
-    if(url && t) t.innerHTML = `<img src="${url}" alt="">`;
+    if(!t) continue;
+    t.classList.remove('skel');
+    t.innerHTML = url ? `<img src="${url}" alt="" class="fade-in">` : '🖼️';
   }
 }
 function drawAtt(){
@@ -552,7 +564,7 @@ function attClick(e){
   if(x){ const a = att.list.find(f => f.id === x.dataset.attX); att.list = att.list.filter(f => f !== a); att.fresh.delete(a.id); if(a.path) att.removed.push(a.path); drawAtt(); return; }
   const row = e.target.closest('[data-att]'); if(!row) return;
   const a = att.list.find(f => f.id === row.dataset.att), b = att.fresh.get(a.id);
-  (b ? openBlob(b, a) : openAttachment(a)).catch(err => showAlert(att.alertId, err instanceof FileError ? err.message : 'Couldn\'t open that file.'));
+  withRowLoading(row, b ? openBlob(b, a) : openAttachment(a)).catch(err => showAlert(att.alertId, err instanceof FileError ? err.message : 'Couldn\'t open that file.'));
 }
 /** Saves new blobs locally and returns the final file list for the item. */
 async function attCommit(){
@@ -565,7 +577,7 @@ function openFilesSheet(it){
   const root = $('#fsList');
   root.innerHTML = (it.files || []).map(a => attRow(a, false)).join('') || '<div class="empty" style="padding:20px">No documents.</div>';
   root.onclick = e => { const row = e.target.closest('[data-att]'); if(!row) return; const a = it.files.find(f => f.id === row.dataset.att);
-    openAttachment(a).catch(err => toast({ type:'error', title:'Couldn\'t open the file', body: err instanceof FileError ? err.message : 'Please try again.' })); };
+    withRowLoading(row, openAttachment(a)).catch(err => toast({ type:'error', title:'Couldn\'t open the file', body: err instanceof FileError ? err.message : 'Please try again.' })); };
   fillThumbs(root, it.files || []);
   openSheet('filesSheet');
 }
@@ -1133,12 +1145,12 @@ const devIcon = d => e3d(/android|iphone|phone/i.test(d.name + d.platform) && !/
 async function openDevices(){
   openSheet('devicesSheet');
   const box = $('#devList');
-  box.innerHTML = '<div class="empty" style="padding:22px"><span class="spinner dim"></span> Loading devices…</div>';
+  box.innerHTML = skel.rows(3, { button:true });
   $('#devOthers').classList.add('hidden');
   if(!navigator.onLine){ box.innerHTML = '<div class="empty" style="padding:22px">Connect to the internet to see your devices.</div>'; return; }
   try{
     const r = await listDevices();
-    if(r.missing){ box.innerHTML = '<div class="empty" style="padding:22px">Devices need the Finly 2.0 server update. Run <b>supabase/v2.sql</b> in Supabase → SQL Editor.</div>'; return; }
+    if(r.missing){ box.innerHTML = '<div class="empty" style="padding:22px">Devices need the Finly 2.0 server update. Run the <b>supabase/v2-*.sql</b> files in Supabase → SQL Editor.</div>'; return; }
     const me = deviceId(), list = r.data.sort((a, b) => (b.id === me) - (a.id === me));
     const others = list.filter(d => d.id !== me && !d.revoked);
     $('#devOthers').classList.toggle('hidden', !others.length);
@@ -1237,7 +1249,7 @@ function maybeWhatsNew(){
 /* ================================================================
    MONTHLY PLAN IMAGE — next month's dues as one PNG to share on WhatsApp
 ================================================================ */
-let planMonth = null, planBlob = null;
+let planMonth = null, planBlob = null, planSeq = 0;
 const monthKey = (y, m) => `${y}-${String(m + 1).padStart(2, '0')}`;
 function planRows(key){
   const [y, m] = key.split('-').map(Number), from = `${key}-01`, to = toISO(new Date(y, m, 0)), inMonth = d => dayNum(d) >= dayNum(from) && dayNum(d) <= dayNum(to);
@@ -1297,13 +1309,25 @@ async function openPlan(key){
   planMonth = key || keys[1];
   $$('#plMonth .seg-btn').forEach(b => b.classList.toggle('sel', keys[+b.dataset.m] === planMonth));
   $('#plMonth').classList.toggle('hidden', !keys.includes(planMonth));
-  const p = drawPlan(planMonth);
-  $('#plTitle').textContent = `${p.month} plan`;
-  $('#plSub').textContent = `${p.count} payment${p.count === 1 ? '' : 's'} · ${fmtMoney(Math.round(p.total))}`;
-  planBlob = await new Promise(r => p.canvas.toBlob(r, 'image/png'));
-  const img = $('#plImg'); if(img.src.startsWith('blob:')) URL.revokeObjectURL(img.src); img.src = URL.createObjectURL(planBlob);
+  // open straight away with a skeleton, then swap in the image once it's drawn
+  const seq = ++planSeq, img = $('#plImg');
+  planBlob = null; img.classList.add('hidden'); $('#plSkel').classList.remove('hidden');
+  $('#plSkel').innerHTML = `<div class="skel-wrap" style="padding:22px">${skel.line('40%', 12)}${skel.line('70%', 26)}${skel.line('55%', 12)}</div>
+    <div class="skel-wrap" style="padding:0 16px 18px">${skel.rows(4)}${skel.block(48, 14)}</div>`;
+  $('#plTitle').textContent = 'Monthly plan'; $('#plSub').innerHTML = skel.line('150px', 11);
+  ['#plShare', '#plSave'].forEach(x => { $(x).disabled = true; });
   if(!$('#planSheet').classList.contains('show')) openSheet('planSheet');
   requestAnimationFrame(() => moveThumb($('#plMonth')));
+  await new Promise(r => setTimeout(r, 380));   // let the sheet finish opening first
+  const p = drawPlan(planMonth), blob = await new Promise(r => p.canvas.toBlob(r, 'image/png'));
+  if(seq !== planSeq) return;
+  planBlob = blob;
+  $('#plTitle').textContent = `${p.month} plan`;
+  $('#plSub').textContent = `${p.count} payment${p.count === 1 ? '' : 's'} · ${fmtMoney(Math.round(p.total))}`;
+  if(img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+  img.onload = () => { if(seq !== planSeq) return; $('#plSkel').classList.add('hidden'); img.classList.remove('hidden'); img.classList.add('fade-in'); };
+  img.src = URL.createObjectURL(planBlob);
+  ['#plShare', '#plSave'].forEach(x => { $(x).disabled = false; });
 }
 async function sharePlan(){
   if(!planBlob) return;
@@ -1357,7 +1381,7 @@ let lgFilter = 'all';
 
 /* ---------- shared entries: the other person's side of an entry, kept in sync through the server ---------- */
 const SHARE_KEY = () => 'finly-shares-' + user.id;
-let shares = [], sharesMissing = false, sharesBusy = false;
+let shares = [], sharesMissing = false, sharesBusy = false, sharesFetched = false;
 function loadShares(){ try{ shares = JSON.parse(localStorage.getItem(SHARE_KEY()) || '[]'); }catch{ shares = []; } }
 const pid = p => p.id || `l-${p.date}-${p.amount}`;
 const shareOf = id => shares.find(r => r.id === id && r.owner === user.id);
@@ -1379,6 +1403,7 @@ const pendingShares = () => shares.filter(r => r.counterpart === user.id && r.st
 async function refreshShares(){
   if(!navigator.onLine || sharesBusy || !user.id) return;
   sharesBusy = true;
+  if(!sharesFetched && !shares.length) renderLedger();
   try{
     const r = await fetchShares();
     sharesMissing = !!r.missing;
@@ -1402,7 +1427,7 @@ async function refreshShares(){
     }
     renderLedger(); renderBell();
   }catch(e){ console.warn('Shared entries sync failed', e); }
-  finally{ sharesBusy = false; }
+  finally{ sharesBusy = false; const first = !sharesFetched; sharesFetched = true; if(first) renderLedger(); }
 }
 async function pushShare(it, quiet){
   if(!it.phone || !navigator.onLine || sharesMissing) return;
@@ -1432,8 +1457,10 @@ function requestCard(r){
     <p>${mine === 'borrowed' ? `You borrowed <b>${fmtMoney(d.amount)}</b> from ${who}` : `You gave <b>${fmtMoney(d.amount)}</b> to ${who}`} on ${fmtDate(d.date)}${d.interest ? ` · ${esc(rateLabel(d))}` : ''}${d.tenure ? ` · ${d.tenure} months` : ''}${d.note ? ` · ${esc(d.note)}` : ''}.</p>
     <div class="req-actions"><button class="btn btn-secondary btn-sm" data-share-dec>Decline</button><button class="btn btn-primary btn-sm" data-share-acc>Accept</button></div></div>`;
 }
-async function respondShare(id, accept){
+async function respondShare(id, accept, btn){
   if(!navigator.onLine) return toast({ type:'warning', title:'You\'re offline', body:'Connect to the internet to respond.' });
+  const card = btn?.closest('.req-card');
+  if(card){ card.querySelectorAll('button').forEach(x => { x.disabled = true; }); setBusy(btn, true, accept ? 'Accepting…' : 'Declining…'); }
   try{ await shareRespond(id, accept); toast({ type: accept ? 'success' : 'warning', title: accept ? 'Added to your ledger' : 'Declined' }); }
   catch{ toast({ type:'error', title:'Couldn\'t respond', body:'Please try again.' }); }
   refreshShares();
@@ -1477,6 +1504,7 @@ function renderLedger(){
     .sort((a, b) => (lendDue(a) ? dayNum(lendDue(a)) : 1e9) - (lendDue(b) ? dayNum(lendDue(b)) : 1e9) || dayNum(b.date) - dayNum(a.date));
   const reqs = pendingShares();
   $('#lgList').innerHTML = (reqs.length ? `<div class="req-head">Requests <small>(${reqs.length})</small></div>` + reqs.map(requestCard).join('') : '') + (list.length ? list.map(lendCard).join('')
+    : firstLoad() || (sharesBusy && !sharesFetched && !shares.length && !act.length) ? skel.cards(2)
     : `<div class="empty"><div class="em">${e3d('🤝')}</div><b>${act.length ? 'Nothing here' : 'No money lent or borrowed'}</b>Keep track of money you gave someone or borrowed, with interest if any.
        <div class="empty-actions"><button class="btn btn-primary btn-sm" data-lnew="lent">I gave money</button><button class="btn btn-secondary btn-sm" data-lnew="borrowed">I borrowed money</button></div></div>`);
   const done = lends().filter(i => i.status === 'closed').sort((a, b) => dayNum(b.closedOn) - dayNum(a.closedOn));
@@ -1490,7 +1518,7 @@ function renderLedger(){
 function onLedgerClick(e){
   const nw = e.target.closest('[data-lnew]'); if(nw) return openLendSheet(null, nw.dataset.lnew);
   const rq = e.target.closest('[data-share-acc],[data-share-dec]');
-  if(rq) return respondShare(rq.closest('[data-share]').dataset.share, rq.hasAttribute('data-share-acc'));
+  if(rq) return respondShare(rq.closest('[data-share]').dataset.share, rq.hasAttribute('data-share-acc'), rq);
   const b = e.target.closest('[data-act]'); if(!b) return;
   const it = findLend(b.closest('[data-id]')?.dataset.id); if(!it) return;
   if(b.dataset.act === 'lcall') return callPerson(it);
@@ -1650,10 +1678,10 @@ async function saveLendPay(){
   const settles = c.sp.after <= 0.5, id = it.id, lent = it.dir === 'lent';
   if(it.remote){
     if(!navigator.onLine) return toast({ type:'warning', title:'You\'re offline', body:'Shared entries need the internet to record a payment.' });
-    closeSheet('lendPaySheet');
-    try{ await shareAddPayment(it.shareId, { id:uid(), date:c.date, amount:round2(c.v), by:user.id }); await refreshShares();
+    const sb = $('#lpSave'); setBusy(sb, true, 'Saving…');
+    try{ await shareAddPayment(it.shareId, { id:uid(), date:c.date, amount:round2(c.v), by:user.id }); await refreshShares(); setBusy(sb, false); closeSheet('lendPaySheet');
       toast({ type:'success', title: lent ? `Received ${fmtMoney(c.v)}` : `Repaid ${fmtMoney(c.v)}`, body:`${it.person} sees this payment too.` }); }
-    catch{ toast({ type:'error', title:'Couldn\'t record the payment', body:'Please try again.' }); }
+    catch{ setBusy(sb, false); toast({ type:'error', title:'Couldn\'t record the payment', body:'Please try again.' }); }
     return;
   }
   closeSheet('lendPaySheet');
@@ -1766,7 +1794,7 @@ function drawAge(){
 let pinState = { pin:'', state:'' }, pinSeq = 0;
 function drawPinHint(text, kind){
   const h = $('#pfPinHint');
-  h.innerHTML = !text ? '' : kind === 'busy' ? `<span class="spinner dim"></span>${esc(text)}` : kind === 'ok' ? `${e3d('📍')}${esc(text)}` : esc(text);
+  h.innerHTML = !text ? '' : kind === 'busy' ? `<span class="skel-inline">${skel.line('45%', 11)}</span>` : kind === 'ok' ? `${e3d('📍')}${esc(text)}` : esc(text);
   h.className = 'fhint pin-hint ' + (kind || '');
 }
 async function onPinInput(){
@@ -1905,6 +1933,7 @@ async function runExport(){
   if(!items.length) return;
   const base = items.length === 1 ? `finly-${slug(items[0].name)}` : 'finly';
   setBusy(btn, true, 'Preparing…');
+  $('#exPreview').innerHTML = `<div class="skel-wrap">${skel.line('80%', 12)}${skel.line('55%', 12)}</div>`;
   try{
     let filename, data;
     if(ex.format === 'csv'){ data = buildCsv(ex.csvKind, items, r, exportHelpers); filename = `${base}-${ex.csvKind}-${T}.csv`; }
@@ -2036,7 +2065,7 @@ function drawBranch(kind, msg){
   const el = $('#bkBranch');
   if(!kind){ el.classList.add('hidden'); el.innerHTML = ''; return; }
   el.className = 'lookup-card ' + kind;
-  if(kind === 'busy') el.innerHTML = `<span class="spinner dim"></span><span>Looking up the branch…</span>`;
+  if(kind === 'busy') el.innerHTML = `${skel.circle(26)}<span class="skel-col">${skel.line('60%', 13)}${skel.line('38%', 10)}</span>`;
   else if(kind === 'ok') el.innerHTML = `${e3d('📍', 'lk-ic')}<span><b>${esc(ifscFound.branch)}</b>${ifscFound.city ? `<small>${esc(ifscFound.city)}${ifscFound.state ? ', ' + esc(ifscFound.state) : ''}</small>` : ''}</span>`;
   else el.innerHTML = `<span>${esc(msg)}</span>`;
 }
@@ -2424,7 +2453,7 @@ function wire(){
   queueFabCheck = () => { cancelAnimationFrame(fabRaf); fabRaf = requestAnimationFrame(() => fabCheck(goingDown)); };
   new ResizeObserver(() => setTimeout(queueFabCheck, 400)).observe($('#toastStack') || document.body);
 
-  onSyncStatus(renderSync);
+  onSyncStatus(onSyncChange);
   onAfterSync(() => syncFiles({ userId:user.id, items:st().items, deletes:dueFileDeletes(), clearDelete:clearFileDelete,
     isReferenced: p => st().items.some(i => (i.files || []).some(a => a.path === p)),
     markUploaded: (itemId, attId, path) => commit(() => { const a = findItem(itemId)?.files?.find(f => f.id === attId); if(a) a.path = path; }) }));

@@ -962,3 +962,28 @@ body.auth-mode .nav-shield{ display:none; }
 .mini-btn.call-btn{ color:#22C55E; border:1px solid rgba(34,197,94,.38); }
 :root[data-theme="light"] .call-btn{ color:#16A34A; background:linear-gradient(135deg, rgba(52,211,153,.22), rgba(22,163,74,.08)); }
 .mini-btn.call-btn svg{ width:16px; height:16px; }
+
+/* ---------- skeleton loaders ---------- */
+.skel{ display:block; position:relative; overflow:hidden; background:color-mix(in srgb, var(--text) 8%, transparent); border-radius:8px; flex-shrink:0; }
+.skel::after{ content:""; position:absolute; inset:0; transform:translateX(-100%);
+  background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 10%, transparent) 45%, color-mix(in srgb, var(--primary) 14%, transparent) 55%, transparent);
+  animation: skelShimmer 1.25s ease-in-out infinite; }
+@keyframes skelShimmer{ to{ transform:translateX(100%); } }
+@media (prefers-reduced-motion: reduce){ .skel::after{ animation:none; } }
+.skel-line{ border-radius:7px; }
+.skel-circle{ border-radius:50%; }
+.skel-btn{ width:72px; height:32px; border-radius:11px; }
+.skel-btn.wide{ width:120px; height:40px; border-radius:13px; }
+.skel-row{ display:flex; align-items:center; gap:12px; padding:12px 2px; animation: fadeIn .3s ease both; animation-delay: calc(var(--i, 0) * 60ms); }
+.skel-col{ flex:1; min-width:0; display:flex; flex-direction:column; gap:7px; }
+.skel-card{ border:1px solid var(--glass-border); background:var(--glass); border-radius:var(--radius); padding:16px; margin-bottom:12px; display:flex; flex-direction:column; gap:16px; animation: fadeIn .3s ease both; animation-delay: calc(var(--i, 0) * 80ms); }
+:root[data-theme="light"] .skel{ background:rgba(14,20,45,.07); }
+.skel-wrap{ display:flex; flex-direction:column; gap:10px; }
+.fade-in{ animation: fadeIn .35s ease both; }
+.skel-inline{ display:inline-flex; align-items:center; gap:8px; width:100%; }
+.plan-skel{ min-height:420px; background:linear-gradient(160deg, var(--bg-elev), var(--bg)); }
+.att-thumb.skel{ display:inline-flex; }
+.row-loading{ position:relative; overflow:hidden; pointer-events:none; }
+.row-loading::after{ content:""; position:absolute; inset:0; transform:translateX(-100%);
+  background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary) 16%, transparent), transparent); animation: skelShimmer 1.1s ease-in-out infinite; }
+.lookup-card .skel-col{ gap:6px; }

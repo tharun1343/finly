@@ -326,3 +326,18 @@ export function initDateFields(){
   new MutationObserver(muts => { for(const m of muts) for(const n of m.addedNodes) if(n.nodeType === 1){ if(n.matches('input[type=date]')) enhanceDate(n); else n.querySelectorAll?.('input[type=date]').forEach(enhanceDate); } })
     .observe(document.body, { childList:true, subtree:true });
 }
+
+/* ---------------- skeleton loaders: grey shapes with a left-to-right shimmer while data loads ---------------- */
+const sk = (cls, style = '') => `<span class="skel ${cls}"${style ? ` style="${style}"` : ''}></span>`;
+export const skel = {
+  line: (w = '100%', h = 12) => sk('skel-line', `width:${w};height:${h}px`),
+  block: (h, r = 16) => sk('skel-block', `height:${h}px;border-radius:${r}px`),
+  circle: (d = 36) => sk('skel-circle', `width:${d}px;height:${d}px`),
+  /** List rows: icon, two text lines, optional button. */
+  rows: (n = 3, { button = false } = {}) => Array.from({ length:n }, (_, i) => `<div class="skel-row" style="--i:${i}">${skel.circle(36)}
+    <span class="skel-col">${skel.line(`${62 - i * 9}%`, 13)}${skel.line(`${44 - i * 6}%`, 10)}</span>${button ? sk('skel-btn') : ''}</div>`).join(''),
+  /** Item cards like the Home / Ledger lists. */
+  cards: (n = 2) => Array.from({ length:n }, (_, i) => `<div class="skel-card" style="--i:${i}"><div class="skel-row" style="padding:0">${skel.circle(44)}
+    <span class="skel-col">${skel.line('55%', 15)}${skel.line('35%', 11)}</span>${skel.line('22%', 18)}</div>
+    ${skel.line('100%', 7)}<div class="skel-row" style="padding:0">${skel.line('30%', 12)}<span style="flex:1"></span>${sk('skel-btn wide')}</div></div>`).join('')
+};
