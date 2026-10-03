@@ -52,8 +52,8 @@ How I want apps planned, designed, built, tested and shipped. Give this file to 
 - **No neon or bright green.** Calm palettes. Offer several palettes as **colour circles without labels**.
 - **Check both dark and light themes.** In light mode, surfaces must stand out from the background (white cards with shadows, darker secondary text). I will notice low contrast.
 - **Text size:** Small / Medium / Large, plus a **Bold text** toggle. Layouts must not break or overflow at any size.
-- The **selected bottom tab** uses a neutral colour (white/near-black), not the accent colour.
-- **Export / download buttons are green.**
+- The **selected bottom tab** uses the palette's accent colour. Scrolling content fades out **above** the tab bar, never under it.
+- **Export buttons are green with an up arrow** (export = sending out).
 - **Sync dot:** green = synced, orange = syncing or waiting to upload, red = offline or failed.
 
 ### Layout and navigation

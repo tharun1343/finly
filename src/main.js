@@ -5,6 +5,7 @@ import { initToasts, initSheets, initNumeric, initInfo, initDateFields, toast, c
 import { initAuth, showAuth, showOnboarding, authBack, prefillSignin } from './auth.js';
 import { startApp, applySettings, handleBack, openItemFromNotification, onResumeApp, swatchesHTML } from './app.js';
 import { isNative, watchNetwork, onResume, onBack, onNotificationTap, requestNotifyPermission, cancelAllReminders } from './native.js';
+import { permsNeeded, showPerms } from './perms.js';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let current = null, appStarted = false, loggingOut = false, pendingNotif = null;
@@ -43,9 +44,9 @@ function launch(){
   if(pendingNotif){ const id = pendingNotif; pendingNotif = null; setTimeout(() => openItemFromNotification(id), 500); }
 }
 
-async function logout(sessionExpired){
+async function logout(sessionExpired, reason){
   closeAllSheets();
-  if(sessionExpired){
+  if(sessionExpired && reason !== 'revoked'){
     prefillSignin(current?.email, 'Your session expired. Sign in again to keep syncing — nothing on this phone was lost.');
     appStarted = false;
     showAuth('signin');
@@ -59,7 +60,8 @@ async function logout(sessionExpired){
   current = null; appStarted = false; loggingOut = false;
   resetLook(); prefillSignin('', '');
   showAuth('welcome');
-  toast({ type:'success', title:'Logged out' });
+  if(reason === 'revoked') toast({ type:'warning', title:'Signed out from another device', body:'This device was removed from your account, and its Finly data was cleared.', ms:8000 });
+  else toast({ type:'success', title:'Logged out' });
 }
 
 function boot(){
@@ -79,6 +81,7 @@ function boot(){
 
   const u = storedUser();
   if(u) enter(u);
+  else if(permsNeeded()){ hideBoot(); showPerms(showAuth).then(() => showAuth('welcome')); }
   else { showAuth('welcome'); hideBoot(); }
 }
 boot();

@@ -3,10 +3,13 @@ import { PALETTES, TOKEN_MAP, paletteVars, swatchStyle, palKey, isPitch } from '
 import { store, commitState, replaceState, onSyncStatus, syncStatus, scheduleSync, runSync, onRemoteChanges, pendingCount, queueFileDelete, clearFileDelete, dueFileDeletes, onAfterSync } from './data.js';
 import { MAX_FILES, prepareFile, putLocal, thumbUrl, openAttachment, openBlob, syncFiles, FileError } from './files.js';
 import { toast, layoutFab, openSheet, closeSheet, confirmBox, setInvalid, showAlert, clearForm, scrollToError, setBusy, bindSwitch, setSwitch, isOn,
-  moveThumb, bindSeg, moveAllThumbs, setNum, bindNumeric, enhanceSelect, setSelect, setSelectIcons, makeReminderPicker, remSummary, withTransition, flip, handleBackInOverlays, footShadow, fmtNumInput } from './ui.js';
-import { isNative, APP_VERSION, APK_URL, setBarsStyle, scheduleReminders, notifyPermission, requestNotifyPermission, saveFile, checkForUpdate, openExternal, notifyUpdate, prepareUpdateChannel, testNotification } from './native.js';
+  moveThumb, bindSeg, moveAllThumbs, openStack, setNum, bindNumeric, enhanceSelect, setSelect, setSelectIcons, makeReminderPicker, remSummary, withTransition, flip, handleBackInOverlays, footShadow, fmtNumInput } from './ui.js';
+import { isNative, APP_VERSION, APK_URL, setBarsStyle, scheduleReminders, notifyPermission, requestNotifyPermission, saveFile, checkForUpdate, openExternal, notifyUpdate, prepareUpdateChannel, testNotification,
+  canInstallUpdates, allowInstallUpdates, downloadAndInstall, pickContact, setLauncherIcon, schedulePlanNotice } from './native.js';
 import { paymentRows, summaryRow, buildCsv, buildPdf } from './export.js';
 import { lendState, lendDue, splitPayment, rateLabel } from './ledger.js';
+import { registerDevice, listDevices, revokeDevice, forgetDevice, deviceId, normPhone, fmtPhone, PHONE_RE, saveProfile as saveRemoteProfile, fetchShares, shareUpsert, shareRespond, shareAddPayment, shareRemove } from './cloud.js';
+import { logoColors, logoSVG } from './logo.js';
 import { BANK_GROUPS, OTHER_BANK, findBank, bankFromIfsc, shortName, IFSC_RE, maskAcct, bankBadgeHTML, bankColor, lookupIfsc } from './banks.js';
 import { PIN_RE, lookupPin, ageFrom } from './places.js';
 import { E3D, AVATARS, e3dCode } from './e3d-list.js';
@@ -23,7 +26,7 @@ const findItem = id => st().items.find(i => i.id === id);
 const activeItems = () => st().items.filter(i => i.status === 'active' && i.kind !== 'lend');
 const closedItems = () => st().items.filter(i => i.status === 'closed' && i.kind !== 'lend').sort((a, b) => dayNum(b.closedOn) - dayNum(a.closedOn));
 /* Ledger entries (money lent or borrowed) live with the other items but are kept out of EMI/chit totals. */
-const lends = () => st().items.filter(i => i.kind === 'lend');
+const lends = () => st().items.filter(i => i.kind === 'lend').concat(sharedLends());
 const activeLends = () => lends().filter(i => i.status === 'active');
 const lendWho = it => it.dir === 'lent' ? `Collect from ${it.person}` : `Repay ${it.person}`;
 /** Round r's date. Once a chit has an anchor (a round's actual date), later rounds follow it instead of the start date. */
@@ -257,7 +260,7 @@ function renderStats(){
       : it.ongoing ? `${fmtMoney(paid)} paid · ongoing` : `${fmtMoney(paid)} paid · ${fmtMoney(rem)} left`;
     const subFull = sub + (it.lateFees ? ` · ${fmtMoney(it.lateFees)} late fees` : '');
     return `<div class="by-row" style="--accent:${catColor(c)};--i:${i}"><div class="glyph">${glyphHTML(c, it)}</div><div style="min-width:0"><div class="by-name">${esc(it.name)}</div><div class="by-sub">${subFull}</div>${it.ongoing ? '' : barHTML('by_' + it.id, pct, catColor(c))}</div>
-      <button class="mini-btn" data-export="${it.id}" aria-label="Export ${esc(it.name)}">${ICON.download}</button></div>`; }).join('')
+      <button class="mini-btn" data-export="${it.id}" aria-label="Export ${esc(it.name)}">${ICON.export}</button></div>`; }).join('')
     : `<div class="empty" style="padding:20px">${byView === 'active' ? 'No active commitments.' : 'Finished EMIs and chits show up here.'}</div>`;
   const ds = t.debt + t.savings, dp = ds ? Math.round(t.debt / ds * 100) : 0;
   $('#splitBar').innerHTML = ds ? `<div class="split-seg" style="width:${dp}%;background:var(--rose)">${dp >= 12 ? dp + '%' : ''}</div><div class="split-seg" style="width:${100 - dp}%;background:var(--gold)">${100 - dp >= 12 ? (100 - dp) + '%' : ''}</div>` : '';
@@ -301,7 +304,7 @@ function chitDetail(it, i){
       <button class="btn btn-primary btn-grow nowrap" data-act="pay" aria-label="Mark round ${r} as paid">${ICON.check}Mark as paid</button>
       <button class="round-btn ghost" data-act="edit" aria-label="Edit">${ICON.edit}</button>
       <button class="round-btn ghost" data-act="hist" aria-label="View all rounds">${ICON.history}</button>
-      <button class="round-btn ghost" data-export="${it.id}" aria-label="Export ${esc(it.name)}">${ICON.download}</button></div>
+      <button class="round-btn ghost" data-export="${it.id}" aria-label="Export ${esc(it.name)}">${ICON.export}</button></div>
   </article>`;
 }
 
@@ -317,7 +320,7 @@ function renderWallet(){
   $('#closedList').innerHTML = cl.length ? cl.map(it => { const c = cat(it.catId);
     const sub = it.kind === 'chit' ? `${it.members} rounds${it.taken ? ' · received ' + fmtMoney(it.taken.received) : ''}` : `${it.tenureTotal} months`;
     return `<div class="closed-row" data-id="${it.id}" style="--accent:${catColor(c)}"><div class="glyph">${glyphHTML(c, it)}</div><div style="min-width:0"><div class="cr-name">${esc(it.name)}</div><div class="cr-sub">Closed ${fmtDate(it.closedOn)} · ${sub}</div></div><div class="cr-amt"><span>Paid</span>${fmtMoney(itemPaid(it))}</div>
-      ${it.kind === 'chit' ? `<button class="mini-btn" data-act="hist" aria-label="View all rounds of ${esc(it.name)}">${ICON.history}</button>` : ''}<button class="mini-btn" data-export="${it.id}" aria-label="Export ${esc(it.name)}">${ICON.download}</button></div>`; }).join('')
+      ${it.kind === 'chit' ? `<button class="mini-btn" data-act="hist" aria-label="View all rounds of ${esc(it.name)}">${ICON.history}</button>` : ''}<button class="mini-btn" data-export="${it.id}" aria-label="Export ${esc(it.name)}">${ICON.export}</button></div>`; }).join('')
     : '<div class="empty" style="padding:22px">Completed EMIs and chits move here automatically.</div>';
 }
 
@@ -366,6 +369,7 @@ export function applySettings(){
   Object.entries(TOKEN_MAP).forEach(([k, css]) => root.style.setProperty(css, v[k]));
   $('meta[name="theme-color"]')?.setAttribute('content', v.bg);
   setBarsStyle(s.theme);
+  paintLogos();
   setSwitch('themeSwitch', s.theme === 'dark');
   root.dataset.bold = s.bold ? '1' : '0'; setSwitch('boldSwitch', !!s.bold);
   setSwitch('alertsSwitch', s.alertsOn);
@@ -394,13 +398,15 @@ function go(p){
 }
 export function handleBack(){
   if(forcedUpdate) return true;
+  if(coachStep && !openStack.length) return true;
   if(handleBackInOverlays()) return true;
   if(page === 'stats'){ go('profile'); return true; }
   if(page !== 'home'){ go('home'); return true; }
   return false;
 }
 export function openItemFromNotification(id){
-  const it = id && findItem(id);
+  if(String(id || '').startsWith('__plan')){ closeSheet(); return openPlan(id.split(':')[1]); }
+  const it = id && findLend(id);
   closeSheet(); filter = 'all';
   if(!it) return go('home');
   if(it.kind === 'lend'){ go('ledger'); setTimeout(() => highlight(`#lgList [data-id="${id}"], #lgClosedList [data-id="${id}"]`), 380); return; }
@@ -1111,9 +1117,328 @@ async function saveRound(){
 }
 
 /* ================================================================
+   DEVICES — every phone and browser signed in to this account
+================================================================ */
+let devCheckAt = 0, serverV2 = true;
+async function checkDevice(force){
+  if(!navigator.onLine || (!force && Date.now() - devCheckAt < 10 * 60e3)) return;
+  devCheckAt = Date.now();
+  try{
+    const r = await registerDevice();
+    serverV2 = !r.missing;
+    if(r.revoked) onLogout(false, 'revoked');
+  }catch(e){ console.warn('Device check failed', e); }
+}
+const devIcon = d => e3d(/android|iphone|phone/i.test(d.name + d.platform) && !/web|chrome|safari|firefox|edge/i.test(d.platform) ? '📱' : '💻');
+async function openDevices(){
+  openSheet('devicesSheet');
+  const box = $('#devList');
+  box.innerHTML = '<div class="empty" style="padding:22px"><span class="spinner dim"></span> Loading devices…</div>';
+  $('#devOthers').classList.add('hidden');
+  if(!navigator.onLine){ box.innerHTML = '<div class="empty" style="padding:22px">Connect to the internet to see your devices.</div>'; return; }
+  try{
+    const r = await listDevices();
+    if(r.missing){ box.innerHTML = '<div class="empty" style="padding:22px">Devices need the Finly 2.0 server update. Run <b>supabase/v2.sql</b> in Supabase → SQL Editor.</div>'; return; }
+    const me = deviceId(), list = r.data.sort((a, b) => (b.id === me) - (a.id === me));
+    const others = list.filter(d => d.id !== me && !d.revoked);
+    $('#devOthers').classList.toggle('hidden', !others.length);
+    box.innerHTML = list.map(d => `<div class="dev-row ${d.revoked ? 'off' : ''}"><span class="dev-ic">${devIcon(d)}</span>
+      <span class="dev-txt"><b>${esc(d.name || 'Unknown device')}</b>${d.id === me ? '<span class="badge save">This device</span>' : ''}
+        <small>${esc(d.platform || '')}${d.city ? ' · ' + e3d('📍') + esc(d.city) : ''}</small>
+        <small>${d.revoked ? 'Signed out' : d.id === me ? 'Active now' : 'Last active ' + ago(Date.parse(d.last_seen))} · signed in ${fmtDate(d.created_at.slice(0, 10))}</small></span>
+      ${d.id === me ? '' : d.revoked ? `<button class="btn btn-secondary btn-sm" data-forget="${esc(d.id)}">Clear</button>` : `<button class="btn btn-danger btn-sm" data-revoke="${esc(d.id)}">Remove</button>`}</div>`).join('')
+      || '<div class="empty" style="padding:22px">No devices yet.</div>';
+    $('#devicesSub').textContent = `${list.filter(d => !d.revoked).length} signed in`;
+  }catch(e){ box.innerHTML = '<div class="empty" style="padding:22px">Couldn\'t load devices. Please try again.</div>'; }
+}
+function onDevicesClick(e){
+  const rv = e.target.closest('[data-revoke]'), fg = e.target.closest('[data-forget]');
+  if(rv){
+    const name = rv.closest('.dev-row').querySelector('b').textContent;
+    confirmBox({ title:`Remove ${name}?`, body:'It will be signed out right away and its Finly data cleared the next time it opens. Your data stays safe in your account.', yes:'Remove device', onYes: async () => {
+      try{ await revokeDevice(rv.dataset.revoke); toast({ type:'success', title:'Device removed', body:name }); }
+      catch{ toast({ type:'error', title:'Couldn\'t remove the device', body:'Check your internet and try again.' }); }
+      openDevices();
+    }});
+  } else if(fg){ forgetDevice(fg.dataset.forget).then(openDevices).catch(() => {}); }
+}
+function signOutOthers(){
+  confirmBox({ title:'Sign out all other devices?', body:'Every other phone and browser will be signed out and their Finly data cleared. This device stays signed in.', yes:'Sign out others', onYes: async () => {
+    try{
+      const r = await listDevices();
+      for(const d of (r.data || []).filter(x => x.id !== deviceId() && !x.revoked)) await revokeDevice(d.id);
+      toast({ type:'success', title:'Other devices signed out' });
+    }catch{ toast({ type:'error', title:'Couldn\'t sign out other devices', body:'Check your internet and try again.' }); }
+    openDevices();
+  }});
+}
+
+/* ================================================================
+   WHATSAPP NUMBER — required from 2.0; existing users are walked to Profile
+================================================================ */
+async function pushProfile(force){
+  const ph = st().settings.whatsapp, key = 'finly-profile-pushed';
+  if(!ph || !navigator.onLine || (!force && localStorage.getItem(key) === user.id + ph)) return;
+  try{
+    const r = await saveRemoteProfile(ph, displayName());
+    if(r.taken) return toast({ type:'error', title:'Number already in use', body:'Another Finly account uses this WhatsApp number. Check it in Profile.', ms:7000 });
+    if(!r.missing) localStorage.setItem(key, user.id + ph);
+    refreshShares();
+  }catch(e){ console.warn('Profile sync failed', e); }
+}
+let coachStep = 0;
+const needsWhatsapp = () => !st().settings.whatsapp;
+function startCoach(){ if(!needsWhatsapp()) return; coachStep = page === 'profile' ? 2 : 1; drawCoach(); }
+function drawCoach(){
+  const c = $('#coach');
+  if(!coachStep || openStack.length){ c.classList.add('hidden'); return; }
+  const target = coachStep === 1 ? $('.nav-item[data-page="profile"]') : $('#profileCard');
+  if(!target) return;
+  c.classList.remove('hidden');
+  $('#coachTitle').textContent = coachStep === 1 ? 'Add your WhatsApp number' : 'Edit your profile';
+  $('#coachText').textContent = coachStep === 1 ? 'Finly 2.0 needs your WhatsApp number. Tap Profile to continue.' : 'Tap your profile, then enter your WhatsApp number and tap Update profile.';
+  requestAnimationFrame(() => {
+    const r = target.getBoundingClientRect(), pad = 6, hole = $('#coachHole'), tip = $('#coachTip');
+    Object.assign(hole.style, { left:(r.left - pad) + 'px', top:(r.top - pad) + 'px', width:(r.width + pad * 2) + 'px', height:(r.height + pad * 2) + 'px' });
+    const below = r.top < innerHeight / 2;
+    tip.classList.toggle('below', below);
+    tip.style.top = below ? (r.bottom + 22) + 'px' : ''; tip.style.bottom = below ? '' : (innerHeight - r.top + 22) + 'px';
+    $('#coachArrow').style.left = Math.max(18, Math.min(tip.offsetWidth - 30, r.left + r.width / 2 - tip.getBoundingClientRect().left - 9)) + 'px';
+  });
+}
+function onCoachClick(e){
+  const r = $('#coachHole').getBoundingClientRect();
+  if(e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+  if(coachStep === 1){ go('profile'); coachStep = 2; setTimeout(drawCoach, 480); }
+  else { $('#coach').classList.add('hidden'); openProfileSheet(false, true); }
+}
+function afterWhatsappSaved(){
+  if(needsWhatsapp()) return;
+  if(coachStep){ coachStep = 0; drawCoach(); toast({ type:'success', title:'WhatsApp number saved', body:'Thanks! You\'re all set for Finly 2.0.' }); }
+  setTimeout(maybeWhatsNew, 900);
+}
+
+/* ---------- what's new (once, for people updating from 1.x) ---------- */
+const WN_KEY = 'finly-whatsnew-2';
+function maybeWhatsNew(){
+  if(localStorage.getItem(WN_KEY) || needsWhatsapp() || openStack.length) return;
+  localStorage.setItem(WN_KEY, '1');
+  if(!st().items.length) return;   // brand-new account: nothing to catch up on
+  const f = [['📥', 'Updates inside the app', 'Update now downloads with a progress bar and installs right here.'],
+    ['👥', 'Contacts in Ledger', 'Choose a contact for each person. If they use Finly too, the entry appears in their ledger once they accept.'],
+    ['🗓️', 'Monthly plan image', 'On the last day of each month at 9 PM, get next month\'s dues as one image to share on WhatsApp.'],
+    ['📲', 'Devices', 'See every phone signed in to your account, and remove any you don\'t recognise.'],
+    ['🎨', 'Icon follows your colours', 'The app icon now matches the colour palette you pick.'],
+    ['📊', 'Outflow breakdown', 'Tap Outflow on Home to see each category\'s monthly amounts.']];
+  $('#wnList').innerHTML = f.map(([e, t, d]) => `<div class="wn-row"><span class="wn-ic">${e3d(e)}</span><span><b>${t}</b><small>${d}</small></span></div>`).join('');
+  openSheet('whatsNewSheet');
+}
+
+/* ================================================================
+   MONTHLY PLAN IMAGE — next month's dues as one PNG to share on WhatsApp
+================================================================ */
+let planMonth = null, planBlob = null;
+const monthKey = (y, m) => `${y}-${String(m + 1).padStart(2, '0')}`;
+function planRows(key){
+  const [y, m] = key.split('-').map(Number), from = `${key}-01`, to = toISO(new Date(y, m, 0)), inMonth = d => dayNum(d) >= dayNum(from) && dayNum(d) <= dayNum(to);
+  const rows = [], bank = it => { const b = it.bankId && bankById(it.bankId); return b ? bankLabel(b) : ''; };
+  for(const it of activeItems()){
+    if(it.kind === 'bill'){
+      let d = it.due, left = it.ongoing ? 1e4 : it.tenureLeft;
+      while(left > 0 && dayNum(d) <= dayNum(to)){ if(inMonth(d)) rows.push({ date:d, name:it.name, sub:catLabel(it), amount:it.amount, bank:bank(it) }); d = addMonths(d, ev(it), it.anchorDay); left--; }
+    } else {
+      for(let r = it.roundsDone + 1; r <= it.members; r++){
+        const d = r === it.roundsDone + 1 ? nextDue(it) : roundDate(it, r);
+        if(dayNum(d) > dayNum(to)) break;
+        if(inMonth(d)) rows.push({ date:d, name:it.name, sub:`Chit · round ${r} of ${it.members}${it.taken ? '' : ' · less commission'}`, amount:it.installment, bank:'' });
+      }
+    }
+  }
+  for(const it of activeLends()){ const d = lendDue(it); if(d && inMonth(d)) rows.push({ date:d, name: lendWho(it), sub:'Ledger', amount: lendState(it, d).outstanding, bank:'' }); }
+  return { y, m, rows: rows.sort((a, b) => dayNum(a.date) - dayNum(b.date)) };
+}
+function drawPlan(key){
+  const { y, m, rows } = planRows(key), pal = paletteVars(st().settings.palette, 'dark');
+  const W = 1080, rowH = 132, head = 330, foot = 170, H = head + Math.max(1, rows.length) * rowH + foot;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'), F = '-apple-system, "Segoe UI", Roboto, sans-serif';
+  const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, pal.bgElev); bg.addColorStop(1, pal.bg); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  const glow = g.createRadialGradient(160, 80, 10, 160, 80, 700); glow.addColorStop(0, pal.primary + '55'); glow.addColorStop(1, pal.primary + '00'); g.fillStyle = glow; g.fillRect(0, 0, W, H);
+  const month = new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month:'long', year:'numeric' });
+  g.fillStyle = pal.primary2; g.font = `600 34px ${F}`; g.fillText('FINLY · MONTHLY PLAN', 72, 108);
+  g.fillStyle = '#FFFFFF'; g.font = `800 76px ${F}`; g.fillText(month, 72, 196);
+  const total = rows.reduce((t, r) => t + r.amount, 0);
+  g.fillStyle = 'rgba(255,255,255,.65)'; g.font = `500 34px ${F}`;
+  g.fillText(`${displayName()} · ${rows.length} payment${rows.length === 1 ? '' : 's'} · ${fmtMoney(Math.round(total))}`, 72, 256);
+  let yy = head;
+  if(!rows.length){ g.fillStyle = 'rgba(255,255,255,.8)'; g.font = `600 40px ${F}`; g.fillText('Nothing due this month 🎉', 72, yy + 80); yy += rowH; }
+  for(const r of rows){
+    const d = parseISO(r.date);
+    g.fillStyle = 'rgba(255,255,255,.06)'; g.beginPath(); g.roundRect(56, yy, W - 112, rowH - 18, 28); g.fill();
+    g.fillStyle = pal.primary + '33'; g.beginPath(); g.roundRect(80, yy + 16, 92, 82, 20); g.fill();
+    g.fillStyle = pal.primary2; g.textAlign = 'center'; g.font = `800 40px ${F}`; g.fillText(String(d.getDate()), 126, yy + 62);
+    g.font = `600 22px ${F}`; g.fillText(d.toLocaleDateString('en-IN', { weekday:'short' }).toUpperCase(), 126, yy + 90); g.textAlign = 'left';
+    const maxW = W - 112 - 140 - 300;
+    const clip = (t, font) => { g.font = font; let s_ = t; while(g.measureText(s_).width > maxW && s_.length > 3) s_ = s_.slice(0, -2); return s_ === t ? t : s_ + '…'; };
+    g.fillStyle = '#FFFFFF'; g.fillText(clip(r.name, `700 36px ${F}`), 200, yy + 54);
+    g.fillStyle = 'rgba(255,255,255,.6)'; g.fillText(clip([r.sub, r.bank].filter(Boolean).join(' · '), `500 26px ${F}`), 200, yy + 92);
+    g.fillStyle = '#FFFFFF'; g.font = `800 38px ${F}`; g.textAlign = 'right'; g.fillText(fmtMoney(Math.round(r.amount)), W - 84, yy + 70); g.textAlign = 'left';
+    yy += rowH;
+  }
+  g.fillStyle = pal.primary + '26'; g.beginPath(); g.roundRect(56, yy + 10, W - 112, 96, 28); g.fill();
+  g.fillStyle = '#FFFFFF'; g.font = `700 36px ${F}`; g.fillText('Total for the month', 92, yy + 70);
+  g.textAlign = 'right'; g.fillStyle = pal.gold; g.font = `800 40px ${F}`; g.fillText(fmtMoney(Math.round(total)), W - 92, yy + 72); g.textAlign = 'left';
+  g.fillStyle = 'rgba(255,255,255,.45)'; g.font = `500 24px ${F}`; g.fillText(`Made with Finly · ${fmtDate(T)}`, 72, H - 40);
+  return { canvas:c, month, count: rows.length, total };
+}
+async function openPlan(key){
+  const now = parseISO(T), nx = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const keys = [monthKey(now.getFullYear(), now.getMonth()), monthKey(nx.getFullYear(), nx.getMonth())];
+  planMonth = key || keys[1];
+  $$('#plMonth .seg-btn').forEach(b => b.classList.toggle('sel', keys[+b.dataset.m] === planMonth));
+  $('#plMonth').classList.toggle('hidden', !keys.includes(planMonth));
+  const p = drawPlan(planMonth);
+  $('#plTitle').textContent = `${p.month} plan`;
+  $('#plSub').textContent = `${p.count} payment${p.count === 1 ? '' : 's'} · ${fmtMoney(Math.round(p.total))}`;
+  planBlob = await new Promise(r => p.canvas.toBlob(r, 'image/png'));
+  const img = $('#plImg'); if(img.src.startsWith('blob:')) URL.revokeObjectURL(img.src); img.src = URL.createObjectURL(planBlob);
+  if(!$('#planSheet').classList.contains('show')) openSheet('planSheet');
+  requestAnimationFrame(() => moveThumb($('#plMonth')));
+}
+async function sharePlan(){
+  if(!planBlob) return;
+  const name = `finly-plan-${planMonth}.png`;
+  try{
+    if(!isNative && navigator.canShare?.({ files:[new File([planBlob], name, { type:'image/png' })] })){
+      await navigator.share({ files:[new File([planBlob], name, { type:'image/png' })], title:'Finly monthly plan' });
+    } else await saveFile(name, planBlob);
+  }catch(e){ if(!/abort|cancel/i.test(String(e?.message || e))) toast({ type:'error', title:'Couldn\'t share the image', body:'Please try again.' }); }
+}
+
+/* ================================================================
+   OUTFLOW BREAKDOWN — monthly outflow by category, in a pop-up
+================================================================ */
+let ofTab = null;
+function openOutflow(){
+  const act = activeItems(), cats = st().cats.filter(c => act.some(i => i.catId === c.id));
+  if(!cats.length) return toast({ type:'warning', title:'Nothing to show yet', body:'Add an EMI, bill or chit to see your monthly outflow.' });
+  if(!ofTab || !cats.some(c => c.id === ofTab)) ofTab = cats.some(c => c.id === 'emi') ? 'emi' : cats[0].id;
+  const perMonth = it => it.kind === 'chit' ? it.installment / it.interval : it.amount / ev(it);
+  const total = act.reduce((t, it) => t + perMonth(it), 0);
+  $('#ofSub').textContent = `${fmtMoney(Math.round(total))} on average each month`;
+  $('#ofTabs').innerHTML = cats.map(c => `<button class="of-tab ${c.id === ofTab ? 'sel' : ''}" data-tab="${c.id}" role="tab" aria-selected="${c.id === ofTab}">${c.emoji ? e3d(c.emoji, 'chip-3d') : ''}${esc(c.name)}</button>`).join('');
+  const list = act.filter(i => i.catId === ofTab).sort((a, b) => perMonth(b) - perMonth(a)), sum = list.reduce((t, it) => t + perMonth(it), 0);
+  $('#ofList').innerHTML = `<div class="of-head"><span>Title</span><span>Amount</span><span>Avg / month</span></div>`
+    + list.map(it => `<div class="of-row"><span class="of-name">${esc(it.name)}</span><span>${fmtMoney(it.kind === 'chit' ? it.installment : it.amount)}</span><b>${fmtMoney(Math.round(perMonth(it)))}</b></div>`).join('')
+    + `<div class="of-row total"><span class="of-name">Total</span><span></span><b>${fmtMoney(Math.round(sum))}</b></div>`;
+  if(!$('#outflowSheet').classList.contains('show')) openSheet('outflowSheet');
+  $(`#ofTabs [data-tab="${ofTab}"]`)?.scrollIntoView({ block:'nearest', inline:'center', behavior: reduceMotion() ? 'auto' : 'smooth' });
+}
+
+/* ================================================================
+   LOGO + LAUNCHER ICON — follow the colour palette
+================================================================ */
+let logoSeq = 0;
+function paintLogos(){
+  const url = 'data:image/svg+xml;utf8,' + encodeURIComponent(logoSVG(logoColors(st().settings.palette), { rounded:true, id: 'x' + (logoSeq++) }));
+  $$('.brand-mark img, img.brand-ic').forEach(i => { i.src = url; });
+}
+function syncLauncherIcon(){
+  if(!isNative) return;
+  const want = palKey(st().settings.palette);
+  if(localStorage.getItem('finly-launcher') === want) return;
+  setLauncherIcon(want).then(r => { if(r) localStorage.setItem('finly-launcher', want); });
+}
+
+/* ================================================================
    LEDGER — money lent to or borrowed from people
 ================================================================ */
 let lgFilter = 'all';
+
+/* ---------- shared entries: the other person's side of an entry, kept in sync through the server ---------- */
+const SHARE_KEY = () => 'finly-shares-' + user.id;
+let shares = [], sharesMissing = false, sharesBusy = false;
+function loadShares(){ try{ shares = JSON.parse(localStorage.getItem(SHARE_KEY()) || '[]'); }catch{ shares = []; } }
+const pid = p => p.id || `l-${p.date}-${p.amount}`;
+const shareOf = id => shares.find(r => r.id === id && r.owner === user.id);
+const shareData = it => ({ dir:it.dir, note:it.note || '', amount:it.amount, date:it.date, interest:it.interest || null, tenure:it.tenure || null,
+  payments:(it.payments || []).map(p => ({ id:pid(p), date:p.date, amount:p.amount, by:p.by || user.id })) });
+/** Entries other people created that name me — shown with the direction flipped. */
+function sharedLends(){
+  if(!user.id) return [];
+  return shares.filter(r => r.counterpart === user.id && r.status === 'accepted').map(r => {
+    const d = r.data || {}, it = { id:'sh_' + r.id, shareId:r.id, remote:true, kind:'lend', dir: d.dir === 'lent' ? 'borrowed' : 'lent',
+      person: r.owner_name || fmtPhone(r.owner_phone) || 'Someone', phone:r.owner_phone, note:d.note || '', amount:d.amount, date:d.date,
+      interest:d.interest || null, tenure:d.tenure || null, payments:d.payments || [], reminders:null, status:'active' };
+    if(it.payments.length && lendState(it, T).outstanding <= 0.5){ it.status = 'closed'; it.closedOn = [...it.payments].sort((a, b) => dayNum(b.date) - dayNum(a.date))[0].date; }
+    return it;
+  });
+}
+const findLend = id => findItem(id) || sharedLends().find(x => x.id === id);
+const pendingShares = () => shares.filter(r => r.counterpart === user.id && r.status === 'pending');
+async function refreshShares(){
+  if(!navigator.onLine || sharesBusy || !user.id) return;
+  sharesBusy = true;
+  try{
+    const r = await fetchShares();
+    sharesMissing = !!r.missing;
+    if(r.missing) return;
+    shares = r.data || [];
+    try{ localStorage.setItem(SHARE_KEY(), JSON.stringify(shares)); }catch{ /* full */ }
+    // payments the other person recorded on my entries → into my copy
+    const adds = [];
+    for(const row of shares.filter(x => x.owner === user.id)){
+      const it = findItem(row.id); if(!it) continue;
+      const have = new Set((it.payments || []).map(pid));
+      const fresh = (row.data?.payments || []).filter(p => !have.has(p.id));
+      if(fresh.length) adds.push([it.id, fresh]);
+    }
+    if(adds.length) commit(() => { for(const [id, fresh] of adds){ const x = findItem(id); x.payments.push(...fresh.map(p => ({ id:p.id, date:p.date, amount:p.amount, by:p.by })));
+      if(lendState(x, T).outstanding <= 0.5){ x.status = 'closed'; x.closedOn = [...x.payments].sort((a, b) => dayNum(b.date) - dayNum(a.date))[0].date; } } });
+    // my entries with a number that the server doesn't have yet (or has an older copy of)
+    for(const it of st().items.filter(i => i.kind === 'lend' && i.phone)){
+      const row = shareOf(it.id);
+      if(!row || row.status === 'removed' || JSON.stringify(row.data) !== JSON.stringify(shareData(it)) || row.counterpart_phone !== it.phone) await pushShare(it, true);
+    }
+    renderLedger(); renderBell();
+  }catch(e){ console.warn('Shared entries sync failed', e); }
+  finally{ sharesBusy = false; }
+}
+async function pushShare(it, quiet){
+  if(!it.phone || !navigator.onLine || sharesMissing) return;
+  if(it.phone === st().settings.whatsapp) return;
+  try{
+    const r = await shareUpsert(it.id, it.phone, displayName(), shareData(it));
+    if(r.missing){ sharesMissing = true; return; }
+    const row = shareOf(it.id), next = { ...(row || {}), id:it.id, owner:user.id, counterpart_phone:it.phone, data:shareData(it), status: row?.status || 'pending', counterpart: r.data === 'linked' ? (row?.counterpart || 'linked') : null };
+    shares = shares.filter(x => !(x.id === it.id && x.owner === user.id)).concat(next);
+    if(!quiet && r.data === 'linked' && !row) toast({ type:'success', title:`Sent to ${it.person}`, body:'It appears in their ledger once they accept.' });
+    if(!quiet) setTimeout(refreshShares, 1500);
+  }catch(e){ console.warn('Share failed', e); }
+}
+function shareChip(it){
+  if(it.remote) return `<span class="badge share">${e3d('👥')}Shared by ${esc(it.person)}</span>`;
+  if(!it.phone) return '';
+  const row = shareOf(it.id);
+  if(!row) return '';
+  if(!row.counterpart) return '<span class="badge soft">Not on Finly yet</span>';
+  return row.status === 'accepted' ? `<span class="badge share">${e3d('👥')}Shared</span>`
+    : row.status === 'declined' ? '<span class="badge due">Declined</span>' : '<span class="badge soft">Waiting to accept</span>';
+}
+function requestCard(r){
+  const d = r.data || {}, mine = d.dir === 'lent' ? 'borrowed' : 'lent', who = esc(r.owner_name || fmtPhone(r.owner_phone));
+  return `<div class="req-card" data-share="${esc(r.id)}"><div class="req-top"><span class="glyph" style="--accent:var(--primary)">${e3d('👥')}</span>
+    <span><b>${who}</b> added an entry with you</span></div>
+    <p>${mine === 'borrowed' ? `You borrowed <b>${fmtMoney(d.amount)}</b> from ${who}` : `You gave <b>${fmtMoney(d.amount)}</b> to ${who}`} on ${fmtDate(d.date)}${d.interest ? ` · ${esc(rateLabel(d))}` : ''}${d.tenure ? ` · ${d.tenure} months` : ''}${d.note ? ` · ${esc(d.note)}` : ''}.</p>
+    <div class="req-actions"><button class="btn btn-secondary btn-sm" data-share-dec>Decline</button><button class="btn btn-primary btn-sm" data-share-acc>Accept</button></div></div>`;
+}
+async function respondShare(id, accept){
+  if(!navigator.onLine) return toast({ type:'warning', title:'You\'re offline', body:'Connect to the internet to respond.' });
+  try{ await shareRespond(id, accept); toast({ type: accept ? 'success' : 'warning', title: accept ? 'Added to your ledger' : 'Declined' }); }
+  catch{ toast({ type:'error', title:'Couldn\'t respond', body:'Please try again.' }); }
+  refreshShares();
+}
+
 const lendColor = it => it.dir === 'lent' ? 'var(--gold)' : 'var(--rose)';
 const lendGlyph = it => e3d(it.dir === 'lent' ? '💸' : '💵');
 function lendCard(it, i){
@@ -1124,7 +1449,7 @@ function lendCard(it, i){
   const pct = due ? Math.max(0, Math.min(100, Math.round(diffDays(it.date, T) / Math.max(1, diffDays(it.date, due)) * 100))) : 0;
   return `<article class="item-card ${enterCls('l_' + it.id)}" data-id="${it.id}" style="--accent:${lendColor(it)};--i:${i}">
     <div class="ic-top"><div class="ic-id"><div class="glyph">${lendGlyph(it)}</div><div style="min-width:0"><div class="ic-name">${esc(it.person)}</div>
-      <div class="ic-meta"><span class="badge ${lent ? 'save' : 'debt'}">${lent ? 'You gave' : 'You borrowed'}</span><span class="badge soft">${esc(rateLabel(it))}</span>${when}</div>
+      <div class="ic-meta"><span class="badge ${lent ? 'save' : 'debt'}">${lent ? 'You gave' : 'You borrowed'}</span><span class="badge soft">${esc(rateLabel(it))}</span>${shareChip(it)}${when}</div>
       ${it.note ? `<div class="ic-note">${esc(it.note)}</div>` : ''}</div></div>
       <div class="ic-amt"><div class="amt">${fmtMoney(s_.outstanding)}</div><div class="per">${lent ? 'to receive' : 'to pay back'}</div></div></div>
     ${due ? `<div class="progress-row"><div class="progress-labels"><span>Tenure <b>${it.tenure} month${it.tenure === 1 ? '' : 's'}</b></span><span>${pct}%</span></div>${barHTML('l_' + it.id, pct)}</div>` : ''}
@@ -1132,7 +1457,7 @@ function lendCard(it, i){
       <div class="fig"><span class="fig-label">${lent ? 'Given' : 'Borrowed'}</span><span class="fig-value">${fmtMoney(it.amount)}</span></div>
       ${it.interest ? `<div class="fig"><span class="fig-label">Interest so far</span><span class="fig-value ${lent ? 'pos' : 'neg'}">+${fmtMoney(s_.accrued)}</span></div>` : ''}
       ${s_.paid ? `<div class="fig"><span class="fig-label">${lent ? 'Received' : 'Repaid'}</span><span class="fig-value">${fmtMoney(s_.paid)}</span></div>` : ''}</div>
-      <div class="actions"><button class="round-btn ghost" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>
+      <div class="actions">${it.remote ? '' : `<button class="round-btn ghost" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>`}
       <button class="pay-btn" data-act="lpay" aria-label="Record a payment for ${esc(it.person)}">${ICON.check}<span>Record payment</span></button></div></div>
   </article>`;
 }
@@ -1144,21 +1469,24 @@ function renderLedger(){
   $('#lgOweFoot').textContent = bor.length ? `${bor.length} ${bor.length === 1 ? 'person' : 'people'}${intr(bor) ? ` · ${fmtMoney(intr(bor))} interest` : ''}` : 'Nothing borrowed';
   const list = act.filter(i => lgFilter === 'all' || i.dir === lgFilter)
     .sort((a, b) => (lendDue(a) ? dayNum(lendDue(a)) : 1e9) - (lendDue(b) ? dayNum(lendDue(b)) : 1e9) || dayNum(b.date) - dayNum(a.date));
-  $('#lgList').innerHTML = list.length ? list.map(lendCard).join('')
+  const reqs = pendingShares();
+  $('#lgList').innerHTML = (reqs.length ? `<div class="req-head">Requests <small>(${reqs.length})</small></div>` + reqs.map(requestCard).join('') : '') + (list.length ? list.map(lendCard).join('')
     : `<div class="empty"><div class="em">${e3d('🤝')}</div><b>${act.length ? 'Nothing here' : 'No money lent or borrowed'}</b>Keep track of money you gave someone or borrowed, with interest if any.
-       <div class="empty-actions"><button class="btn btn-primary btn-sm" data-lnew="lent">I gave money</button><button class="btn btn-secondary btn-sm" data-lnew="borrowed">I borrowed money</button></div></div>`;
+       <div class="empty-actions"><button class="btn btn-primary btn-sm" data-lnew="lent">I gave money</button><button class="btn btn-secondary btn-sm" data-lnew="borrowed">I borrowed money</button></div></div>`);
   const done = lends().filter(i => i.status === 'closed').sort((a, b) => dayNum(b.closedOn) - dayNum(a.closedOn));
   $('#lgClosedHead').classList.toggle('hidden', !done.length);
   $('#lgClosedCount').textContent = done.length ? `(${done.length})` : '';
   $('#lgClosedList').innerHTML = done.map(it => `<div class="closed-row" data-id="${it.id}" style="--accent:${lendColor(it)}"><div class="glyph">${lendGlyph(it)}</div>
     <div style="min-width:0"><div class="cr-name">${esc(it.person)}</div><div class="cr-sub">Settled ${fmtDate(it.closedOn)} · ${it.dir === 'lent' ? 'gave' : 'borrowed'} ${fmtMoney(it.amount)}</div></div>
     <div class="cr-amt"><span>${it.dir === 'lent' ? 'Got back' : 'Repaid'}</span>${fmtMoney(lendState(it, T).paid)}</div>
-    <button class="mini-btn" data-act="lpay" aria-label="Payments for ${esc(it.person)}">${ICON.history}</button><button class="mini-btn" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button></div>`).join('');
+    <button class="mini-btn" data-act="lpay" aria-label="Payments for ${esc(it.person)}">${ICON.history}</button>${it.remote ? '' : `<button class="mini-btn" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>`}</div>`).join('');
 }
 function onLedgerClick(e){
   const nw = e.target.closest('[data-lnew]'); if(nw) return openLendSheet(null, nw.dataset.lnew);
+  const rq = e.target.closest('[data-share-acc],[data-share-dec]');
+  if(rq) return respondShare(rq.closest('[data-share]').dataset.share, rq.hasAttribute('data-share-acc'));
   const b = e.target.closest('[data-act]'); if(!b) return;
-  const it = findItem(b.closest('[data-id]')?.dataset.id); if(!it) return;
+  const it = findLend(b.closest('[data-id]')?.dataset.id); if(!it) return;
   if(b.dataset.act === 'ledit') openLendSheet(it);
   else if(b.dataset.act === 'lpay') openLendPay(it);
 }
@@ -1168,8 +1496,9 @@ let editingLend = null, lendDir = 'lent', lendPer = 'month';
 function pickSeg(id, attr, val){ $$(`#${id} .seg-btn`).forEach(b => b.classList.toggle('sel', b.dataset[attr] === val)); requestAnimationFrame(() => moveThumb($('#' + id))); }
 function lendForm(){
   const interest = isOn('lInt') ? { rate: num($('#lRate').value), per: lendPer } : null, tenure = isOn('lTen') ? num($('#lTenM').value) : null;
+  const rawPhone = $('#lPhone').value.trim();
   return { dir: lendDir, person: $('#lName').value.trim(), note: $('#lNote').value.trim(), amount: num($('#lAmt').value), date: $('#lDate').value, interest, tenure,
-    payments: editingLend?.payments || [] };
+    phone: rawPhone ? normPhone(rawPhone) : '', payments: editingLend?.payments || [] };
 }
 function drawLendCalc(){
   const f = lendForm(), lent = lendDir === 'lent';
@@ -1179,6 +1508,7 @@ function drawLendCalc(){
   if(f.interest) requestAnimationFrame(() => moveThumb($('#lPer')));
   const okTen = isInt(f.tenure) && f.tenure >= 1 && f.tenure <= 600, due = okTen && f.date ? addMonths(f.date, f.tenure) : null;
   $('#lTenHint').textContent = due ? `Due around ${fmtDate(due)}` : '';
+  $('#lShareHint').textContent = f.phone && PHONE_RE.test(f.phone) ? `If ${f.person || 'they'} use${f.person ? 's' : ''} Finly, this entry will also appear in their ledger (as "${lent ? 'I borrowed' : 'I gave'}") after they accept.` : '';
   const box = $('#lCalc');
   if(!(f.amount > 0) || !f.date || (f.interest && !(f.interest.rate > 0))){ box.innerHTML = '<div class="calc-line"><span>Enter the amount, date' + (f.interest ? ' and rate' : '') + ' to see the totals.</span></div>'; footShadow($('#lendSheet')); return; }
   const now = lendState(f, diffDays(T, f.date) > 0 ? f.date : T), atDue = due ? lendState(f, due) : null, word = lent ? 'to receive' : 'to pay back';
@@ -1195,7 +1525,8 @@ function openLendSheet(it, dir){
   lendDir = it ? it.dir : (dir || (lgFilter === 'borrowed' ? 'borrowed' : 'lent')); lendPer = it?.interest?.per || 'month';
   pickSeg('lDir', 'dir', lendDir); pickSeg('lPer', 'per', lendPer);
   $('#lTitle').textContent = it ? `Edit · ${it.person}` : 'Add to ledger';
-  $('#lName').value = it?.person || ''; $('#lNote').value = it?.note || '';
+  $('#lName').value = it?.person || ''; $('#lNote').value = it?.note || ''; $('#lPhone').value = fmtPhone(it?.phone || ''); lendAutoName = '';
+  $('#lPick').classList.toggle('hidden', !isNative);
   setNum('lAmt', it ? it.amount : ''); $('#lDate').value = it?.date || T; $('#lDate').max = T;
   setSwitch('lInt', !!it?.interest); setNum('lRate', it?.interest ? it.interest.rate : '');
   setSwitch('lTen', !!it?.tenure); setNum('lTenM', it?.tenure || '');
@@ -1213,9 +1544,11 @@ function saveLend(){
   bad += setInvalid('lDateG', !f.date || diffDays(T, f.date) > 0 || (firstPay && diffDays(firstPay, f.date) > 0));
   if(f.interest) bad += setInvalid('lRateG', !(f.interest.rate >= 0.01 && f.interest.rate <= 100));
   if(isOn('lTen')) bad += setInvalid('lTenG', !(isInt(f.tenure) && f.tenure >= 1 && f.tenure <= 600));
+  if(f.phone) bad += setInvalid('lPhoneG', !PHONE_RE.test(f.phone));
   if(bad){ showAlert('lendAlert', `Please fix ${bad} highlighted field${bad > 1 ? 's' : ''}.`); scrollToError('lendSheet'); return; }
   closeSheet('lendSheet');
-  const rec = { dir:f.dir, person:f.person, note:f.note, amount:round2(f.amount), date:f.date, interest: f.interest ? { rate:round2(f.interest.rate), per:f.interest.per } : null, tenure: isOn('lTen') ? f.tenure : null };
+  const rec = { dir:f.dir, person:f.person, note:f.note, phone:f.phone, amount:round2(f.amount), date:f.date, interest: f.interest ? { rate:round2(f.interest.rate), per:f.interest.per } : null, tenure: isOn('lTen') ? f.tenure : null };
+  const hadPhone = editingLend?.phone;
   if(editingLend){
     const id = editingLend.id;
     commit(() => { const x = findItem(id); Object.assign(x, rec);
@@ -1224,6 +1557,7 @@ function saveLend(){
       else { x.status = 'active'; delete x.closedOn; } },
       { type:'success', title:'Entry updated', body:f.person });
     flashCard(id);
+    if(rec.phone) pushShare(findItem(id)); else if(hadPhone) shareRemove(id).catch(() => {});
   } else {
     const id = uid();
     commit(() => st().items.push({ id, kind:'lend', catId:null, ...rec, payments:[], reminders:null, status:'active', files:[] }),
@@ -1234,6 +1568,7 @@ function saveLend(){
     renderLedger(); flushBars();
     setTimeout(() => highlight(`#lgList [data-id="${id}"]`), 380);
     maybeAskNotify();
+    if(rec.phone) pushShare(findItem(id));
   }
 }
 function deleteLend(){
@@ -1242,7 +1577,27 @@ function deleteLend(){
   confirmBox({ title:`Delete ${it.person}?`, body:`This entry${it.payments.length ? ` and its ${it.payments.length} payment${it.payments.length === 1 ? '' : 's'}` : ''} will be removed. You can undo right after.`, onYes: async () => {
     await animateOut(it.id);
     commit(() => { st().items = st().items.filter(i => i.id !== it.id); }, { type:'warning', title:'Deleted', body:it.person });
+    if(it.phone) shareRemove(it.id).catch(() => {});
   }});
+}
+
+/* ---------- choose a person from the phone's contacts ---------- */
+let lendAutoName = '';
+async function chooseContact(){
+  let c;
+  try{ c = await pickContact(); }
+  catch(e){ return toast({ type:'warning', title:'Contacts not allowed', body:'Allow Contacts for Finly in Android Settings → Apps → Finly → Permissions.', ms:7000 }); }
+  if(!c) return;
+  const name = $('#lName').value.trim();
+  if(c.name && (!name || name === lendAutoName)){ $('#lName').value = c.name; lendAutoName = c.name; }
+  const seen = new Set(), phones = (c.phones || []).map(p => ({ ...p, norm: normPhone(p.number) })).filter(p => PHONE_RE.test(p.norm) && !seen.has(p.norm) && seen.add(p.norm));
+  const use = p => { $('#lPhone').value = fmtPhone(p.norm); $('#lPhoneG').classList.remove('invalid'); drawLendCalc(); };
+  if(!phones.length){ drawLendCalc(); return toast({ type:'warning', title:'No mobile number', body:`${c.name || 'This contact'} has no phone number saved.` }); }
+  if(phones.length === 1) return use(phones[0]);
+  $('#ppTitle').textContent = c.name || 'Choose a number';
+  $('#ppList').innerHTML = phones.map((p, i) => `<button class="pp-row" data-pp="${i}"><span class="pp-ic">${e3d('📱')}</span><span><b>${esc(fmtPhone(p.norm))}</b><small>${esc(p.label || 'Mobile')}${p.primary ? ' · default' : ''}</small></span>${ICON.right}</button>`).join('');
+  $('#ppList').onclick = e => { const b = e.target.closest('[data-pp]'); if(!b) return; use(phones[+b.dataset.pp]); closeSheet('phonePickSheet'); };
+  openSheet('phonePickSheet');
 }
 
 /* ---------- record money received / repaid ---------- */
@@ -1286,13 +1641,22 @@ async function saveLendPay(){
   if(setInvalid('lpDateG', !c.date || diffDays(T, c.date) > 0 || dayNum(c.date) < dayNum($('#lpDate').min))) return;
   if(!c.ok) return;
   const settles = c.sp.after <= 0.5, id = it.id, lent = it.dir === 'lent';
+  if(it.remote){
+    if(!navigator.onLine) return toast({ type:'warning', title:'You\'re offline', body:'Shared entries need the internet to record a payment.' });
+    closeSheet('lendPaySheet');
+    try{ await shareAddPayment(it.shareId, { id:uid(), date:c.date, amount:round2(c.v), by:user.id }); await refreshShares();
+      toast({ type:'success', title: lent ? `Received ${fmtMoney(c.v)}` : `Repaid ${fmtMoney(c.v)}`, body:`${it.person} sees this payment too.` }); }
+    catch{ toast({ type:'error', title:'Couldn\'t record the payment', body:'Please try again.' }); }
+    return;
+  }
   closeSheet('lendPaySheet');
   if(settles) await animateOut(id);
-  commit(() => { const x = findItem(id); x.payments.push({ date:c.date, amount:round2(c.v) });
+  commit(() => { const x = findItem(id); x.payments.push({ id:uid(), date:c.date, amount:round2(c.v), by:user.id });
       if(settles){ x.status = 'closed'; x.closedOn = c.date; } },
     settles ? { type:'success', title:`${it.person} — all settled 🎉`, body:'Moved to Settled.' }
       : { type:'success', title: lent ? `Received ${fmtMoney(c.v)}` : `Repaid ${fmtMoney(c.v)}`, body:`${it.person} · ${fmtMoney(c.sp.after)} ${lent ? 'still to receive' : 'still to pay back'}` });
   if(!settles) flashCard(id);
+  if(it.phone) pushShare(findItem(id), true);
 }
 
 /* ================================================================
@@ -1369,11 +1733,12 @@ function deleteCat(){
 /* ================================================================
    PROFILE / INCOME
 ================================================================ */
-function openProfileSheet(focusIncome){
+function openProfileSheet(focusIncome, focusPhone){
   clearForm('profileSheet');
   const se = st().settings;
   $('#pfSheetEmail').textContent = user.email;
   $('#pfNameIn').value = displayName();
+  $('#pfPhone').value = fmtPhone(se.whatsapp || '');
   $('#pfCompany').value = se.company || '';
   $('#pfDob').value = se.dob || ''; $('#pfDob').max = T;
   $('#pfPin').value = se.pin || '';
@@ -1383,6 +1748,8 @@ function openProfileSheet(focusIncome){
   drawAge(); drawPinHint(se.pin && se.city ? `${se.city}${se.state ? ', ' + se.state : ''}` : '', 'ok');
   openSheet('profileSheet');
   if(focusIncome) setTimeout(() => $('#pfIncomeIn').focus(), 420);
+  $('#pfPhoneG').classList.toggle('attn', !!focusPhone);
+  if(focusPhone) setTimeout(() => $('#pfPhone').focus(), 420);
 }
 function drawAge(){
   const v = $('#pfDob').value, age = v && diffDays(T, v) < 0 ? ageFrom(v) : null;
@@ -1421,14 +1788,19 @@ function saveProfile(){
   clearForm('profileSheet');
   const name = $('#pfNameIn').value.trim(), incRaw = $('#pfIncomeIn').value.trim(), inc = incRaw ? num(incRaw) : null;
   const company = $('#pfCompany').value.trim(), dob = $('#pfDob').value, pin = $('#pfPin').value.trim(), city = $('#pfCity').value.trim();
+  const phone = normPhone($('#pfPhone').value);
   let bad = setInvalid('pfNameG', !name);
+  bad += setInvalid('pfPhoneG', !PHONE_RE.test(phone), 'pfPhoneErr', 'Enter your WhatsApp number (10 digits, or with country code).');
   bad += setInvalid('pfDobG', !!dob && (diffDays(T, dob) >= 0 || ageFrom(dob) == null));
   bad += setInvalid('pfPinG', !!pin && !PIN_RE.test(pin), 'pfPinErr', 'Enter a 6-digit PIN code.');
   bad += setInvalid('pfIncomeG', inc != null && !(inc >= 0 && inc <= 1e8));
   if(bad){ showAlert('pfAlert', `Please fix ${bad} highlighted field${bad > 1 ? 's' : ''}.`); scrollToError('profileSheet'); return; }
   closeSheet('profileSheet');
   const state = pin && pin === pinState.pin ? pinState.state : (pin === st().settings.pin ? st().settings.state : '');
-  commit(() => Object.assign(st().settings, { name, income: inc, company, dob, pin, city, state }), { type:'success', title:'Profile saved' });
+  const phoneChanged = phone !== st().settings.whatsapp;
+  commit(() => Object.assign(st().settings, { name, income: inc, company, dob, pin, city, state, whatsapp: phone }), { type:'success', title:'Profile saved' });
+  if(phoneChanged) pushProfile(true);
+  afterWhatsappSaved();
 }
 
 /* ---------- profile icon: 3D icon, photo or initial ---------- */
@@ -1517,7 +1889,7 @@ function drawExport(){
       + (ex.format === 'csv' && ex.csvKind === 'summary' ? '<br>Summary shows balances as of today; the period doesn\'t apply.' : '');
   const go_ = $('#exGo');
   go_.disabled = !sel.length || badRange;
-  go_.innerHTML = `${ICON.download}Export ${ex.format === 'pdf' ? 'PDF' : 'CSV'}${sel.length === 1 ? '' : ` · ${sel.length} items`}`;
+  go_.innerHTML = `${ICON.export}Export ${ex.format === 'pdf' ? 'PDF' : 'CSV'}${sel.length === 1 ? '' : ` · ${sel.length} items`}`;
   requestAnimationFrame(() => footShadow($('#exportSheet')));
 }
 const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'commitment';
@@ -1570,6 +1942,7 @@ async function setAlerts(on){
     }
   }
   setSetting({ alertsOn:on });
+  schedulePlanNotice(on);
   toast({ type: on ? 'success' : 'warning', title: on ? 'Reminders on' : 'Reminders off', body: on ? (isNative ? 'You\'ll get a notification at 9 AM before each due date.' : 'Due items will show in the bell. Phone notifications work in the Android app.') : 'You won\'t be reminded until you turn this back on.' });
 }
 /** Shows under the reminders switch whether this phone will actually show notifications. */
@@ -1750,9 +2123,44 @@ function renderUpdate(){
     $('#fuNote').textContent = navigator.onLine ? 'Your data stays safe — it\'s backed up to your account.' : 'Connect to the internet to download the update.';
   }
 }
-function startUpdateDownload(){
-  openExternal(APK_URL);
-  if(!forcedUpdate) toast({ type:'success', title:'Downloading the update', body:'Open the downloaded file and tap Install. Your data stays as it is.', ms:7000 });
+/* ---------- in-app update: download with progress, then Android's installer ---------- */
+let updRunning = false;
+function setUpd(p, msg){
+  if(p != null){ const pct = Math.round(p * 100); $('#upPct').textContent = pct + '%'; $('#upBar').style.width = pct + '%';
+    if(forcedUpdate) $('#fuGo').textContent = pct < 100 ? `Downloading… ${pct}%` : 'Installing…'; }
+  if(msg){ $('#upMsg').textContent = msg; if(forcedUpdate) $('#fuNote').textContent = msg; }
+}
+async function startUpdateDownload(){
+  if(!isNative) return openExternal(APK_URL);
+  $('#upTitle').textContent = updateInfo?.latest ? `Updating to v${updateInfo.latest}` : 'Updating Finly';
+  $('#upSub').textContent = 'Your data stays as it is.';
+  ['#upAllow', '#upRetry'].forEach(x => $(x).classList.add('hidden'));
+  if(!forcedUpdate) openSheet('updSheet');
+  if(updRunning) return;
+  setUpd(0, 'Checking permission…');
+  if(!(await canInstallUpdates())){
+    setUpd(0, 'Android needs your OK to let Finly install its own updates. Tap below, turn on "Allow from this source", then come back.');
+    $('#upAllow').classList.remove('hidden');
+    if(forcedUpdate){ $('#fuGo').textContent = 'Allow installing updates'; $('#fuGo').dataset.allow = '1'; }
+    return;
+  }
+  updRunning = true;
+  setUpd(0, 'Downloading the update…');
+  try{
+    await downloadAndInstall(APK_URL, p => setUpd(p, p < 1 ? 'Downloading the update…' : null));
+    setUpd(1, 'Download complete. Tap Install on the next screen to finish.');
+    $('#upRetry').textContent = 'Open installer again'; $('#upRetry').classList.remove('hidden');
+  }catch(e){
+    console.error(e);
+    setUpd(null, navigator.onLine ? 'The download didn\'t finish. Please try again.' : 'You\'re offline. Connect to the internet and try again.');
+    $('#upRetry').textContent = 'Try again'; $('#upRetry').classList.remove('hidden');
+    if(forcedUpdate) $('#fuGo').textContent = 'Try again';
+  }finally{ updRunning = false; }
+}
+async function allowUpdates(){
+  const ok = await allowInstallUpdates();
+  if(ok){ $('#upAllow').classList.add('hidden'); delete $('#fuGo').dataset.allow; startUpdateDownload(); }
+  else setUpd(null, 'Installing updates is still off. Turn on "Allow from this source" for Finly to continue.');
 }
 async function checkUpdates(force){
   if(!isNative) return null;   // the web version is always the latest — APK updates don't apply
@@ -1823,6 +2231,24 @@ function wire(){
   ['lpAmt', 'lpDate'].forEach(id => { $('#' + id).addEventListener('input', drawLendPay); $('#' + id).addEventListener('change', drawLendPay); });
   $('#lpSave').addEventListener('click', saveLendPay);
   $('#openStats').addEventListener('click', () => go('stats'));
+  $('#outflowTile').addEventListener('click', openOutflow);
+  $('#ofTabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if(b && b.dataset.tab !== ofTab){ ofTab = b.dataset.tab; openOutflow(); } });
+  $('#openPlan').addEventListener('click', () => openPlan());
+  bindSeg($('#plMonth'), b => { const now = parseISO(T), nx = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    openPlan(b.dataset.m === '0' ? monthKey(now.getFullYear(), now.getMonth()) : monthKey(nx.getFullYear(), nx.getMonth())); });
+  $('#plShare').addEventListener('click', sharePlan);
+  $('#plSave').addEventListener('click', () => planBlob && saveFile(`finly-plan-${planMonth}.png`, planBlob).catch(() => {}));
+  $('#openDevices').addEventListener('click', openDevices);
+  $('#devList').addEventListener('click', onDevicesClick);
+  $('#devOthers').addEventListener('click', signOutOthers);
+  $('#lPick').addEventListener('click', chooseContact);
+  $('#lPhone').addEventListener('input', drawLendCalc);
+  $('#wnGo').addEventListener('click', () => { closeSheet('whatsNewSheet'); go('ledger'); });
+  $('#coach').addEventListener('click', onCoachClick);
+  addEventListener('resize', () => drawCoach());
+  // when the profile sheet closes without a number, walk them back to it
+  new MutationObserver(() => { if(!$('#profileSheet').classList.contains('show') && needsWhatsapp() && coachStep) setTimeout(drawCoach, 300); })
+    .observe($('#profileSheet'), { attributes:true, attributeFilter:['class'] });
   $('#statsBack').addEventListener('click', () => go('profile'));
   $('#testNotifRow').addEventListener('click', async () => {
     if(!isNative) return toast({ type:'warning', title:'Works in the Android app', body:'Phone notifications need the installed app.' });
@@ -1936,7 +2362,7 @@ function wire(){
   $('#exGo').addEventListener('click', runExport);
 
   $('#themeRow').addEventListener('click', () => withTransition(() => { setSetting({ theme: st().settings.theme === 'dark' ? 'light' : 'dark' }); }));
-  $('#palGrid').addEventListener('click', e => { const b = e.target.closest('.swatch'); if(!b || b.dataset.pal === palKey(st().settings.palette)) return; withTransition(() => setSetting({ palette:b.dataset.pal })); });
+  $('#palGrid').addEventListener('click', e => { const b = e.target.closest('.swatch'); if(!b || b.dataset.pal === palKey(st().settings.palette)) return; withTransition(() => setSetting({ palette:b.dataset.pal })); syncLauncherIcon(); });
   bindSeg($('#textSizeSeg'), b => setSetting({ text:b.dataset.size }));
   $('#alertsRow').addEventListener('click', async () => {
     if(st().settings.alertsOn && isNative && notifyBlocked){
@@ -1958,7 +2384,9 @@ function wire(){
     }catch{ setBusy(btn, false); toast({ type:'error', title:'Couldn\'t check for updates', body:'Check your internet connection and try again.' }); }
   });
   ['#homeUpdateSlot', '#updateSlot'].forEach(s => $(s).addEventListener('click', onUpdateClick));
-  $('#fuGo').addEventListener('click', startUpdateDownload);
+  $('#fuGo').addEventListener('click', () => $('#fuGo').dataset.allow ? allowUpdates() : startUpdateDownload());
+  $('#upAllow').addEventListener('click', allowUpdates);
+  $('#upRetry').addEventListener('click', startUpdateDownload);
   initAccordions();
   $('#newBankBtn').addEventListener('click', () => openBankSheet(null));
   $('#bankList').addEventListener('click', e => { if(e.target.closest('[data-add-bank]')) return openBankSheet(null); const r = e.target.closest('[data-bank]'); if(r) openBankSheet(bankById(r.dataset.bank)); });
@@ -2019,11 +2447,22 @@ export function startApp(u, { logout }){
   const a = computeAlerts().filter(x => x.d <= 1);
   if(a.length && day !== T){
     localStorage.setItem('finly-due-toast', T);
-    setTimeout(() => toast({ type:'warning', title: a.length === 1 ? (a[0].d < 0 ? `${a[0].it.name} is overdue` : `${a[0].it.name} is due ${a[0].d === 0 ? 'today' : 'tomorrow'}`) : a.some(x => x.d < 0) ? `${a.filter(x => x.d < 0).length} overdue, ${a.length} need attention` : `${a.length} payments due soon`, body: a.length > 1 ? a.slice(0, 2).map(x => x.it.name).join(', ') + (a.length > 2 ? '…' : '') : '', ms:5500 }), 900);
+    const nm = it => it.kind === 'lend' ? lendWho(it) : it.name;
+    setTimeout(() => toast({ type:'warning', title: a.length === 1 ? (a[0].d < 0 ? `${nm(a[0].it)} is overdue` : `${nm(a[0].it)} is due ${a[0].d === 0 ? 'today' : 'tomorrow'}`) : a.some(x => x.d < 0) ? `${a.filter(x => x.d < 0).length} overdue, ${a.length} need attention` : `${a.length} payments due soon`, body: a.length > 1 ? a.slice(0, 2).map(x => nm(x.it)).join(', ') + (a.length > 2 ? '…' : '') : '', ms:5500 }), 900);
   }
+  // Finly 2.0: WhatsApp number, this device, shared entries, monthly plan reminder, icon
+  loadShares(); renderLedger();
+  if(!st().settings.whatsapp && PHONE_RE.test(u.phone || '')) commit(() => { st().settings.whatsapp = u.phone; });
+  pushProfile(false);
+  checkDevice(true);
+  setTimeout(refreshShares, 1200);
+  schedulePlanNotice(st().settings.alertsOn);
+  syncLauncherIcon();
+  setTimeout(() => { if(needsWhatsapp()) startCoach(); else maybeWhatsNew(); }, 1400);
 }
 export function onResumeApp(){
   if(!store.uid) return;
   refreshToday(); render(); scheduleReminders(reminderPlan); scheduleSync(300); checkUpdates(false).catch(() => {}); refreshNotifyStatus();
+  checkDevice(false); refreshShares(); schedulePlanNotice(st().settings.alertsOn); drawCoach();
 }
 export { swatchesHTML };
