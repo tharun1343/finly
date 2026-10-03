@@ -1439,6 +1439,12 @@ async function respondShare(id, accept){
   refreshShares();
 }
 
+/* ---------- call the person (asks first, then opens the phone dialer) ---------- */
+const callBtn = it => it.phone ? `<button type="button" class="call-btn" data-act="lcall" aria-label="Call ${esc(it.person)}">${ICON.call}</button>` : '';
+function callPerson(it){
+  confirmBox({ title:`Call ${it.person}?`, body:`${fmtPhone(it.phone)} · this opens your phone's dialer.`, yes:'Call', danger:false,
+    onYes: () => { window.location.href = 'tel:' + it.phone; } });
+}
 const lendColor = it => it.dir === 'lent' ? 'var(--gold)' : 'var(--rose)';
 const lendGlyph = it => e3d(it.dir === 'lent' ? '💸' : '💵');
 function lendCard(it, i){
@@ -1448,7 +1454,7 @@ function lendCard(it, i){
     : `<span class="due-text ${d <= 7 ? 'urgent' : ''}">Due ${fmtDate(due)}</span>`;
   const pct = due ? Math.max(0, Math.min(100, Math.round(diffDays(it.date, T) / Math.max(1, diffDays(it.date, due)) * 100))) : 0;
   return `<article class="item-card ${enterCls('l_' + it.id)}" data-id="${it.id}" style="--accent:${lendColor(it)};--i:${i}">
-    <div class="ic-top"><div class="ic-id"><div class="glyph">${lendGlyph(it)}</div><div style="min-width:0"><div class="ic-name">${esc(it.person)}</div>
+    <div class="ic-top"><div class="ic-id"><div class="glyph">${lendGlyph(it)}</div><div style="min-width:0"><div class="ic-name name-call"><span class="nm">${esc(it.person)}</span>${callBtn(it)}</div>
       <div class="ic-meta"><span class="badge ${lent ? 'save' : 'debt'}">${lent ? 'You gave' : 'You borrowed'}</span><span class="badge soft">${esc(rateLabel(it))}</span>${shareChip(it)}${when}</div>
       ${it.note ? `<div class="ic-note">${esc(it.note)}</div>` : ''}</div></div>
       <div class="ic-amt"><div class="amt">${fmtMoney(s_.outstanding)}</div><div class="per">${lent ? 'to receive' : 'to pay back'}</div></div></div>
@@ -1477,7 +1483,7 @@ function renderLedger(){
   $('#lgClosedHead').classList.toggle('hidden', !done.length);
   $('#lgClosedCount').textContent = done.length ? `(${done.length})` : '';
   $('#lgClosedList').innerHTML = done.map(it => `<div class="closed-row" data-id="${it.id}" style="--accent:${lendColor(it)}"><div class="glyph">${lendGlyph(it)}</div>
-    <div style="min-width:0"><div class="cr-name">${esc(it.person)}</div><div class="cr-sub">Settled ${fmtDate(it.closedOn)} · ${it.dir === 'lent' ? 'gave' : 'borrowed'} ${fmtMoney(it.amount)}</div></div>
+    <div style="min-width:0"><div class="cr-name name-call"><span class="nm">${esc(it.person)}</span>${callBtn(it)}</div><div class="cr-sub">Settled ${fmtDate(it.closedOn)} · ${it.dir === 'lent' ? 'gave' : 'borrowed'} ${fmtMoney(it.amount)}</div></div>
     <div class="cr-amt"><span>${it.dir === 'lent' ? 'Got back' : 'Repaid'}</span>${fmtMoney(lendState(it, T).paid)}</div>
     <button class="mini-btn" data-act="lpay" aria-label="Payments for ${esc(it.person)}">${ICON.history}</button>${it.remote ? '' : `<button class="mini-btn" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>`}</div>`).join('');
 }
@@ -1487,6 +1493,7 @@ function onLedgerClick(e){
   if(rq) return respondShare(rq.closest('[data-share]').dataset.share, rq.hasAttribute('data-share-acc'));
   const b = e.target.closest('[data-act]'); if(!b) return;
   const it = findLend(b.closest('[data-id]')?.dataset.id); if(!it) return;
+  if(b.dataset.act === 'lcall') return callPerson(it);
   if(b.dataset.act === 'ledit') openLendSheet(it);
   else if(b.dataset.act === 'lpay') openLendPay(it);
 }
