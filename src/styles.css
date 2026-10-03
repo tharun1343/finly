@@ -955,8 +955,10 @@ body.auth-mode .nav-shield{ display:none; }
 .perm-note{ font-size:var(--t-xs); color:var(--text-faint); text-align:center; margin-bottom:16px; }
 .credit .link-btn{ font-size:inherit; padding:0; }
 
-/* call button in a ledger card's action row: green gradient with a solid white phone */
-.call-btn{ background:linear-gradient(135deg, #34D399, #16A34A); color:#fff; border:none; box-shadow:0 6px 16px -6px rgba(22,163,74,.6); }
-.call-btn svg{ width:18px; height:18px; }
-.mini-btn.call-btn{ color:#fff; border:none; }
+/* call button in a ledger card's action row: soft green gradient button, solid green phone */
+.call-btn{ background:linear-gradient(135deg, rgba(52,211,153,.24), rgba(22,163,74,.10)); color:#22C55E;
+  border:1px solid rgba(34,197,94,.38); box-shadow:0 6px 16px -8px rgba(22,163,74,.55); }
+.call-btn svg{ width:19px; height:19px; }
+.mini-btn.call-btn{ color:#22C55E; border:1px solid rgba(34,197,94,.38); }
+:root[data-theme="light"] .call-btn{ color:#16A34A; background:linear-gradient(135deg, rgba(52,211,153,.22), rgba(22,163,74,.08)); }
 .mini-btn.call-btn svg{ width:16px; height:16px; }

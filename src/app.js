@@ -1464,7 +1464,7 @@ function lendCard(it, i){
       ${it.interest ? `<div class="fig"><span class="fig-label">Interest so far</span><span class="fig-value ${lent ? 'pos' : 'neg'}">+${fmtMoney(s_.accrued)}</span></div>` : ''}
       ${s_.paid ? `<div class="fig"><span class="fig-label">${lent ? 'Received' : 'Repaid'}</span><span class="fig-value">${fmtMoney(s_.paid)}</span></div>` : ''}</div>
       <div class="actions">${callBtn(it)}${it.remote ? '' : `<button class="round-btn ghost" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>`}
-      <button class="pay-btn" data-act="lpay" aria-label="Record a payment for ${esc(it.person)}">${ICON.check}<span>Record payment</span></button></div></div>
+      <button class="pay-btn" data-act="lpay" aria-label="${lent ? 'Money received from' : 'Money given to'} ${esc(it.person)}">${ICON.check}<span>${lent ? 'Received' : 'Given'}</span></button></div></div>
   </article>`;
 }
 function renderLedger(){
@@ -1612,13 +1612,13 @@ let payLend = null;
 function openLendPay(it){
   payLend = it; clearForm('lendPaySheet');
   const lent = it.dir === 'lent', s_ = lendState(it, T), closed = it.status === 'closed';
-  $('#lpTitle').textContent = closed ? `${it.person} · payments` : lent ? `Money received from ${it.person}` : `Repayment to ${it.person}`;
+  $('#lpTitle').textContent = closed ? `${it.person} · payments` : lent ? `Received from ${it.person}` : `Given to ${it.person}`;
   $('#lpSub').textContent = closed ? `Settled ${fmtDate(it.closedOn)}` : `Outstanding ${fmtMoney(s_.outstanding)}${s_.interest ? ` (principal ${fmtMoney(s_.principal)} + interest ${fmtMoney(s_.interest)})` : ''}`;
   const last = it.payments.length ? [...it.payments].sort((a, b) => dayNum(b.date) - dayNum(a.date))[0].date : it.date;
   $('#lpDate').min = last; $('#lpDate').max = T; $('#lpDate').value = T;
   setNum('lpAmt', closed ? '' : s_.outstanding);
   $$('#lendPaySheet .frow, #lpCalc, #lpSave').forEach(el => el.classList.toggle('hidden', closed));
-  $('#lpSave').textContent = lent ? 'Record money received' : 'Record repayment';
+  $('#lpSave').textContent = lent ? 'Received' : 'Given';
   $('#lpHist').innerHTML = it.payments.length ? [...it.payments].sort((a, b) => dayNum(b.date) - dayNum(a.date))
       .map(p => `<div class="h-row"><span class="h-round">${e3d(lent ? '💰' : '💸')}</span><span class="h-desc">${lent ? 'Received' : 'Repaid'}<br><span class="h-date">${fmtDate(p.date)}</span></span><span class="h-amt">${fmtMoney(p.amount)}</span></div>`).join('')
     : '<div class="h-desc" style="padding:6px 0">No payments yet.</div>';
