@@ -1440,7 +1440,7 @@ async function respondShare(id, accept){
 }
 
 /* ---------- call the person (asks first, then opens the phone dialer) ---------- */
-const callBtn = it => it.phone ? `<button type="button" class="call-btn" data-act="lcall" aria-label="Call ${esc(it.person)}">${ICON.call}</button>` : '';
+const callBtn = (it, cls = 'round-btn') => it.phone ? `<button type="button" class="${cls} call-btn" data-act="lcall" aria-label="Call ${esc(it.person)}">${ICON.call}</button>` : '';
 function callPerson(it){
   confirmBox({ title:`Call ${it.person}?`, body:`${fmtPhone(it.phone)} · this opens your phone's dialer.`, yes:'Call', danger:false,
     onYes: () => { window.location.href = 'tel:' + it.phone; } });
@@ -1454,7 +1454,7 @@ function lendCard(it, i){
     : `<span class="due-text ${d <= 7 ? 'urgent' : ''}">Due ${fmtDate(due)}</span>`;
   const pct = due ? Math.max(0, Math.min(100, Math.round(diffDays(it.date, T) / Math.max(1, diffDays(it.date, due)) * 100))) : 0;
   return `<article class="item-card ${enterCls('l_' + it.id)}" data-id="${it.id}" style="--accent:${lendColor(it)};--i:${i}">
-    <div class="ic-top"><div class="ic-id"><div class="glyph">${lendGlyph(it)}</div><div style="min-width:0"><div class="ic-name name-call"><span class="nm">${esc(it.person)}</span>${callBtn(it)}</div>
+    <div class="ic-top"><div class="ic-id"><div class="glyph">${lendGlyph(it)}</div><div style="min-width:0"><div class="ic-name">${esc(it.person)}</div>
       <div class="ic-meta"><span class="badge ${lent ? 'save' : 'debt'}">${lent ? 'You gave' : 'You borrowed'}</span><span class="badge soft">${esc(rateLabel(it))}</span>${shareChip(it)}${when}</div>
       ${it.note ? `<div class="ic-note">${esc(it.note)}</div>` : ''}</div></div>
       <div class="ic-amt"><div class="amt">${fmtMoney(s_.outstanding)}</div><div class="per">${lent ? 'to receive' : 'to pay back'}</div></div></div>
@@ -1463,7 +1463,7 @@ function lendCard(it, i){
       <div class="fig"><span class="fig-label">${lent ? 'Given' : 'Borrowed'}</span><span class="fig-value">${fmtMoney(it.amount)}</span></div>
       ${it.interest ? `<div class="fig"><span class="fig-label">Interest so far</span><span class="fig-value ${lent ? 'pos' : 'neg'}">+${fmtMoney(s_.accrued)}</span></div>` : ''}
       ${s_.paid ? `<div class="fig"><span class="fig-label">${lent ? 'Received' : 'Repaid'}</span><span class="fig-value">${fmtMoney(s_.paid)}</span></div>` : ''}</div>
-      <div class="actions">${it.remote ? '' : `<button class="round-btn ghost" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>`}
+      <div class="actions">${callBtn(it)}${it.remote ? '' : `<button class="round-btn ghost" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>`}
       <button class="pay-btn" data-act="lpay" aria-label="Record a payment for ${esc(it.person)}">${ICON.check}<span>Record payment</span></button></div></div>
   </article>`;
 }
@@ -1483,9 +1483,9 @@ function renderLedger(){
   $('#lgClosedHead').classList.toggle('hidden', !done.length);
   $('#lgClosedCount').textContent = done.length ? `(${done.length})` : '';
   $('#lgClosedList').innerHTML = done.map(it => `<div class="closed-row" data-id="${it.id}" style="--accent:${lendColor(it)}"><div class="glyph">${lendGlyph(it)}</div>
-    <div style="min-width:0"><div class="cr-name name-call"><span class="nm">${esc(it.person)}</span>${callBtn(it)}</div><div class="cr-sub">Settled ${fmtDate(it.closedOn)} · ${it.dir === 'lent' ? 'gave' : 'borrowed'} ${fmtMoney(it.amount)}</div></div>
+    <div style="min-width:0"><div class="cr-name">${esc(it.person)}</div><div class="cr-sub">Settled ${fmtDate(it.closedOn)} · ${it.dir === 'lent' ? 'gave' : 'borrowed'} ${fmtMoney(it.amount)}</div></div>
     <div class="cr-amt"><span>${it.dir === 'lent' ? 'Got back' : 'Repaid'}</span>${fmtMoney(lendState(it, T).paid)}</div>
-    <button class="mini-btn" data-act="lpay" aria-label="Payments for ${esc(it.person)}">${ICON.history}</button>${it.remote ? '' : `<button class="mini-btn" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>`}</div>`).join('');
+    ${callBtn(it, 'mini-btn')}<button class="mini-btn" data-act="lpay" aria-label="Payments for ${esc(it.person)}">${ICON.history}</button>${it.remote ? '' : `<button class="mini-btn" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>`}</div>`).join('');
 }
 function onLedgerClick(e){
   const nw = e.target.closest('[data-lnew]'); if(nw) return openLendSheet(null, nw.dataset.lnew);
