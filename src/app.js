@@ -1439,6 +1439,12 @@ async function respondShare(id, accept){
   refreshShares();
 }
 
+/* ---------- call the person (asks first, then opens the phone dialer) ---------- */
+const callBtn = (it, cls = 'round-btn') => it.phone ? `<button type="button" class="${cls} call-btn" data-act="lcall" aria-label="Call ${esc(it.person)}">${ICON.call}</button>` : '';
+function callPerson(it){
+  confirmBox({ title:`Call ${it.person}?`, body:`${fmtPhone(it.phone)} · this opens your phone's dialer.`, yes:'Call', danger:false,
+    onYes: () => { window.location.href = 'tel:' + it.phone; } });
+}
 const lendColor = it => it.dir === 'lent' ? 'var(--gold)' : 'var(--rose)';
 const lendGlyph = it => e3d(it.dir === 'lent' ? '💸' : '💵');
 function lendCard(it, i){
@@ -1457,8 +1463,8 @@ function lendCard(it, i){
       <div class="fig"><span class="fig-label">${lent ? 'Given' : 'Borrowed'}</span><span class="fig-value">${fmtMoney(it.amount)}</span></div>
       ${it.interest ? `<div class="fig"><span class="fig-label">Interest so far</span><span class="fig-value ${lent ? 'pos' : 'neg'}">+${fmtMoney(s_.accrued)}</span></div>` : ''}
       ${s_.paid ? `<div class="fig"><span class="fig-label">${lent ? 'Received' : 'Repaid'}</span><span class="fig-value">${fmtMoney(s_.paid)}</span></div>` : ''}</div>
-      <div class="actions">${it.remote ? '' : `<button class="round-btn ghost" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>`}
-      <button class="pay-btn" data-act="lpay" aria-label="Record a payment for ${esc(it.person)}">${ICON.check}<span>Record payment</span></button></div></div>
+      <div class="actions">${callBtn(it)}${it.remote ? '' : `<button class="round-btn ghost" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>`}
+      <button class="pay-btn" data-act="lpay" aria-label="${lent ? 'Money received from' : 'Money given to'} ${esc(it.person)}">${ICON.check}<span>${lent ? 'Received' : 'Given'}</span></button></div></div>
   </article>`;
 }
 function renderLedger(){
@@ -1479,7 +1485,7 @@ function renderLedger(){
   $('#lgClosedList').innerHTML = done.map(it => `<div class="closed-row" data-id="${it.id}" style="--accent:${lendColor(it)}"><div class="glyph">${lendGlyph(it)}</div>
     <div style="min-width:0"><div class="cr-name">${esc(it.person)}</div><div class="cr-sub">Settled ${fmtDate(it.closedOn)} · ${it.dir === 'lent' ? 'gave' : 'borrowed'} ${fmtMoney(it.amount)}</div></div>
     <div class="cr-amt"><span>${it.dir === 'lent' ? 'Got back' : 'Repaid'}</span>${fmtMoney(lendState(it, T).paid)}</div>
-    <button class="mini-btn" data-act="lpay" aria-label="Payments for ${esc(it.person)}">${ICON.history}</button>${it.remote ? '' : `<button class="mini-btn" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>`}</div>`).join('');
+    ${callBtn(it, 'mini-btn')}<button class="mini-btn" data-act="lpay" aria-label="Payments for ${esc(it.person)}">${ICON.history}</button>${it.remote ? '' : `<button class="mini-btn" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>`}</div>`).join('');
 }
 function onLedgerClick(e){
   const nw = e.target.closest('[data-lnew]'); if(nw) return openLendSheet(null, nw.dataset.lnew);
@@ -1487,6 +1493,7 @@ function onLedgerClick(e){
   if(rq) return respondShare(rq.closest('[data-share]').dataset.share, rq.hasAttribute('data-share-acc'));
   const b = e.target.closest('[data-act]'); if(!b) return;
   const it = findLend(b.closest('[data-id]')?.dataset.id); if(!it) return;
+  if(b.dataset.act === 'lcall') return callPerson(it);
   if(b.dataset.act === 'ledit') openLendSheet(it);
   else if(b.dataset.act === 'lpay') openLendPay(it);
 }
@@ -1605,13 +1612,13 @@ let payLend = null;
 function openLendPay(it){
   payLend = it; clearForm('lendPaySheet');
   const lent = it.dir === 'lent', s_ = lendState(it, T), closed = it.status === 'closed';
-  $('#lpTitle').textContent = closed ? `${it.person} · payments` : lent ? `Money received from ${it.person}` : `Repayment to ${it.person}`;
+  $('#lpTitle').textContent = closed ? `${it.person} · payments` : lent ? `Received from ${it.person}` : `Given to ${it.person}`;
   $('#lpSub').textContent = closed ? `Settled ${fmtDate(it.closedOn)}` : `Outstanding ${fmtMoney(s_.outstanding)}${s_.interest ? ` (principal ${fmtMoney(s_.principal)} + interest ${fmtMoney(s_.interest)})` : ''}`;
   const last = it.payments.length ? [...it.payments].sort((a, b) => dayNum(b.date) - dayNum(a.date))[0].date : it.date;
   $('#lpDate').min = last; $('#lpDate').max = T; $('#lpDate').value = T;
   setNum('lpAmt', closed ? '' : s_.outstanding);
   $$('#lendPaySheet .frow, #lpCalc, #lpSave').forEach(el => el.classList.toggle('hidden', closed));
-  $('#lpSave').textContent = lent ? 'Record money received' : 'Record repayment';
+  $('#lpSave').textContent = lent ? 'Received' : 'Given';
   $('#lpHist').innerHTML = it.payments.length ? [...it.payments].sort((a, b) => dayNum(b.date) - dayNum(a.date))
       .map(p => `<div class="h-row"><span class="h-round">${e3d(lent ? '💰' : '💸')}</span><span class="h-desc">${lent ? 'Received' : 'Repaid'}<br><span class="h-date">${fmtDate(p.date)}</span></span><span class="h-amt">${fmtMoney(p.amount)}</span></div>`).join('')
     : '<div class="h-desc" style="padding:6px 0">No payments yet.</div>';
