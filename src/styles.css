@@ -987,3 +987,4 @@ body.auth-mode .nav-shield{ display:none; }
 .row-loading::after{ content:""; position:absolute; inset:0; transform:translateX(-100%);
   background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary) 16%, transparent), transparent); animation: skelShimmer 1.1s ease-in-out infinite; }
 .lookup-card .skel-col{ gap:6px; }
+.upd-track .bar.installing{ background:linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--ok) 55%, #fff)); }

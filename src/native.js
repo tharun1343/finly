@@ -212,14 +212,31 @@ export async function pickContact(){
 export const setLauncherIcon = name => safe(() => System.setLauncherIcon({ name }), null);
 export const deviceInfo = () => safe(() => System.deviceInfo(), null);
 
-/** Downloads the update APK with progress (0–1), then opens Android's installer. */
-export async function downloadAndInstall(url, onProgress){
-  let handle = null;
+/**
+ * Downloads the update, then installs it inside the app.
+ * onProgress(p, phase): p is 0–1, phase is 'download' or 'install'. onResult(status) gets
+ * 'confirm' (Android asked the user to confirm), 'failed' or 'success'. Android 12+ needs no confirm screen.
+ */
+export async function downloadAndInstall(url, onProgress, onResult){
+  const subs = [];
   try{
-    handle = await Filesystem.addListener('progress', p => { if(p.contentLength > 0) onProgress(Math.min(1, p.bytes / p.contentLength)); });
+    subs.push(await Filesystem.addListener('progress', p => { if(p.contentLength > 0) onProgress(Math.min(1, p.bytes / p.contentLength), 'download'); }));
     await Filesystem.downloadFile({ url, path:'finly-update.apk', directory: Directory.Cache, progress:true, recursive:true });
-    onProgress(1);
+    onProgress(1, 'download');
     const { uri } = await Filesystem.getUri({ path:'finly-update.apk', directory: Directory.Cache });
-    await FileOpener.open({ filePath: uri, contentType:'application/vnd.android.package-archive', openWithDefault:true });
-  } finally { handle?.remove(); }
+    onProgress(0, 'install');
+    try{
+      subs.push(await System.addListener('installProgress', e => onProgress(e.progress, 'install')));
+      subs.push(await System.addListener('installResult', e => onResult && onResult(e.status, e.message)));
+      await System.installUpdate({ path: uri });
+    }catch(e){
+      // older builds of the native helper, or PackageInstaller refused: fall back to Android's installer screen
+      console.warn('In-app install failed, opening installer', e);
+      await FileOpener.open({ filePath: uri, contentType:'application/vnd.android.package-archive', openWithDefault:true });
+      onResult && onResult('confirm');
+    }
+  } finally { setTimeout(() => subs.forEach(h => h?.remove()), 120000); }
 }
+export const reliabilityStatus = () => safe(() => System.reliabilityStatus(), null);
+export const openAppSettings = () => safe(() => System.openAppSettings(), null);
+export const openNotificationSettings = () => safe(() => System.openNotificationSettings(), null);

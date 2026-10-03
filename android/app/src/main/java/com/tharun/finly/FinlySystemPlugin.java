@@ -1,6 +1,14 @@
 package com.tharun.finly;
 
 import android.Manifest;
+import android.app.ActivityManager;
+import android.app.AlarmManager;
+import android.app.PendingIntent;
+import android.content.pm.PackageInstaller;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -33,6 +41,23 @@ import com.getcapacitor.annotation.PermissionCallback;
     permissions = { @Permission(alias = "contacts", strings = { Manifest.permission.READ_CONTACTS }) }
 )
 public class FinlySystemPlugin extends Plugin {
+
+    /** The live plugin, so the install-result receiver can report back to the app. */
+    static FinlySystemPlugin instance;
+
+    @Override
+    public void load() {
+        instance = this;
+    }
+
+    static void reportInstall(String status, String message) {
+        FinlySystemPlugin p = instance;
+        if (p == null) return;
+        JSObject ev = new JSObject();
+        ev.put("status", status);
+        ev.put("message", message == null ? "" : message);
+        p.notifyListeners("installResult", ev);
+    }
 
     /** Launcher icon variants, one activity-alias per palette (see AndroidManifest.xml). */
     private static final String[] ICONS = {
@@ -103,6 +128,111 @@ public class FinlySystemPlugin extends Plugin {
     @ActivityCallback
     private void installResult(PluginCall call, ActivityResult result) {
         if (call != null) installStatus(call);
+    }
+
+    /**
+     * Installs a downloaded update of Finly itself through PackageInstaller.
+     * On Android 12+ an app updating itself needs no confirmation (USER_ACTION_NOT_REQUIRED);
+     * older versions show Android's confirm screen. Emits "installProgress" { progress } while copying.
+     */
+    @PluginMethod
+    public void installUpdate(PluginCall call) {
+        String path = call.getString("path");
+        if (path == null) {
+            call.reject("No file");
+            return;
+        }
+        new Thread(() -> {
+            PackageInstaller.Session session = null;
+            try {
+                File f = new File(path.startsWith("file:") ? Uri.parse(path).getPath() : path);
+                long total = f.length();
+                PackageInstaller pi = getContext().getPackageManager().getPackageInstaller();
+                PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+                params.setAppPackageName(getContext().getPackageName());
+                params.setSize(total);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) params.setInstallReason(PackageManager.INSTALL_REASON_USER);
+                int id = pi.createSession(params);
+                session = pi.openSession(id);
+                InputStream in = new FileInputStream(f);
+                OutputStream out = session.openWrite("finly.apk", 0, total);
+                byte[] buf = new byte[1 << 16];
+                long done = 0;
+                int n, last = -1;
+                while ((n = in.read(buf)) > 0) {
+                    out.write(buf, 0, n);
+                    done += n;
+                    int pct = (int) (done * 100 / Math.max(1, total));
+                    if (pct != last) {
+                        last = pct;
+                        JSObject ev = new JSObject();
+                        ev.put("progress", done / (double) Math.max(1, total));
+                        notifyListeners("installProgress", ev);
+                    }
+                }
+                session.fsync(out);
+                out.close();
+                in.close();
+                int flags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? PendingIntent.FLAG_MUTABLE : 0);
+                Intent result = new Intent(getContext(), InstallResultReceiver.class);
+                PendingIntent pending = PendingIntent.getBroadcast(getContext(), id, result, flags);
+                session.commit(pending.getIntentSender());
+                session.close();
+                JSObject r = new JSObject();
+                r.put("started", true);
+                call.resolve(r);
+            } catch (Exception e) {
+                if (session != null) session.abandon();
+                call.reject("Install failed: " + e.getMessage(), "INSTALL");
+            }
+        }).start();
+    }
+
+    /** What could stop reminders from arriving on time. */
+    @PluginMethod
+    public void reliabilityStatus(PluginCall call) {
+        JSObject r = new JSObject();
+        r.put("unrestricted", ignoringBattery());
+        boolean bgRestricted = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            ActivityManager am = (ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE);
+            bgRestricted = am != null && am.isBackgroundRestricted();
+        }
+        r.put("backgroundRestricted", bgRestricted);
+        boolean exact = true;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AlarmManager alarm = (AlarmManager) getContext().getSystemService(Context.ALARM_SERVICE);
+            exact = alarm == null || alarm.canScheduleExactAlarms();
+        }
+        r.put("exactAlarms", exact);
+        r.put("maker", Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.toLowerCase());
+        call.resolve(r);
+    }
+
+    /** Opens Finly's page in Android Settings (battery, autostart, notifications live there). */
+    @PluginMethod
+    public void openAppSettings(PluginCall call) {
+        Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getContext().getPackageName()));
+        startActivityForResult(call, i, "settingsResult");
+    }
+
+    /** Opens Finly's notification settings. */
+    @PluginMethod
+    public void openNotificationSettings(PluginCall call) {
+        Intent i;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+            i.putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName());
+        } else {
+            i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getContext().getPackageName()));
+        }
+        startActivityForResult(call, i, "settingsResult");
+    }
+
+    @ActivityCallback
+    private void settingsResult(PluginCall call, ActivityResult result) {
+        if (call != null) reliabilityStatus(call);
     }
 
     /* ---------- contacts ---------- */

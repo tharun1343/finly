@@ -2161,9 +2161,10 @@ function renderUpdate(){
 }
 /* ---------- in-app update: download with progress, then Android's installer ---------- */
 let updRunning = false;
-function setUpd(p, msg){
+function setUpd(p, msg, phase = 'download'){
   if(p != null){ const pct = Math.round(p * 100); $('#upPct').textContent = pct + '%'; $('#upBar').style.width = pct + '%';
-    if(forcedUpdate) $('#fuGo').textContent = pct < 100 ? `Downloading… ${pct}%` : 'Installing…'; }
+    $('#upBar').classList.toggle('installing', phase === 'install');
+    if(forcedUpdate) $('#fuGo').textContent = phase === 'install' ? `Installing, please wait… ${pct}%` : `Downloading… ${pct}%`; }
   if(msg){ $('#upMsg').textContent = msg; if(forcedUpdate) $('#fuNote').textContent = msg; }
 }
 async function startUpdateDownload(){
@@ -2183,9 +2184,14 @@ async function startUpdateDownload(){
   updRunning = true;
   setUpd(0, 'Downloading the update…');
   try{
-    await downloadAndInstall(APK_URL, p => setUpd(p, p < 1 ? 'Downloading the update…' : null));
-    setUpd(1, 'Download complete. Tap Install on the next screen to finish.');
-    $('#upRetry').textContent = 'Open installer again'; $('#upRetry').classList.remove('hidden');
+    await downloadAndInstall(APK_URL,
+      (p, phase) => { if(phase === 'install'){ $('#upTitle').textContent = 'Installing the update'; setUpd(p, 'Installing, please wait… Finly will restart by itself when it\'s done.', 'install'); }
+        else setUpd(p, 'Downloading the update…'); },
+      status => {
+        if(status === 'confirm') setUpd(null, 'Android is asking you to confirm — tap Update on the screen it shows.');
+        else if(status === 'failed'){ setUpd(null, 'The install didn\'t finish. Please try again.'); $('#upRetry').textContent = 'Try again'; $('#upRetry').classList.remove('hidden'); if(forcedUpdate) $('#fuGo').textContent = 'Try again'; }
+        else if(status === 'success') setUpd(1, 'Updated! Restarting Finly…', 'install');
+      });
   }catch(e){
     console.error(e);
     setUpd(null, navigator.onLine ? 'The download didn\'t finish. Please try again.' : 'You\'re offline. Connect to the internet and try again.');
