@@ -1138,7 +1138,7 @@ async function openDevices(){
   if(!navigator.onLine){ box.innerHTML = '<div class="empty" style="padding:22px">Connect to the internet to see your devices.</div>'; return; }
   try{
     const r = await listDevices();
-    if(r.missing){ box.innerHTML = '<div class="empty" style="padding:22px">Devices need the Finly 2.0 server update. Run <b>supabase/v2.sql</b> in Supabase → SQL Editor.</div>'; return; }
+    if(r.missing){ box.innerHTML = '<div class="empty" style="padding:22px">Devices need the Finly 2.0 server update. Run the <b>supabase/v2-*.sql</b> files in Supabase → SQL Editor.</div>'; return; }
     const me = deviceId(), list = r.data.sort((a, b) => (b.id === me) - (a.id === me));
     const others = list.filter(d => d.id !== me && !d.revoked);
     $('#devOthers').classList.toggle('hidden', !others.length);
