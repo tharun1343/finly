@@ -177,7 +177,9 @@ button.mini-stat:active{ transform:scale(.96); }
 .mini-stat .ms-value{ font-size:var(--t-lg); font-weight:var(--w7); margin-top:4px; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .mini-stat .ms-value.add{ color:var(--primary-2); font-size:var(--t-base); }
 :root:not([data-text="sm"]) .hero-stats{ grid-template-columns:1fr 1fr; }
-:root:not([data-text="sm"]) .mini-stat:last-child{ grid-column: span 2; }
+:root:not([data-text="sm"]) #saveTile{ grid-column: span 2; }
+#othersTile{ grid-column: 1 / -1; }
+.mini-stat .ms-foot{ font-size:var(--t-2xs); color:var(--text-faint); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 :root:not([data-text="sm"]) .wallet-hero{ grid-template-columns:1fr; }
 :root[data-text="lg"] .metric-grid{ grid-template-columns:1fr; }
 :root[data-text="lg"] .figs{ gap:12px; }
@@ -987,3 +989,41 @@ body.auth-mode .nav-shield{ display:none; }
 .row-loading::after{ content:""; position:absolute; inset:0; transform:translateX(-100%);
   background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary) 16%, transparent), transparent); animation: skelShimmer 1.1s ease-in-out infinite; }
 .lookup-card .skel-col{ gap:6px; }
+.upd-track .bar.installing{ background:linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--ok) 55%, #fff)); }
+
+/* Ledger: To receive and To pay back side by side at every text size */
+#screen-ledger .wallet-hero{ grid-template-columns:1fr 1fr !important; }
+#screen-ledger .wh-card{ padding:14px 12px; min-width:0; }
+#screen-ledger .wh-card .wh-ic{ width:30px; height:30px; right:8px; top:8px; }
+#screen-ledger .wh-value{ font-size:clamp(17px, calc(19px * var(--fs)), 26px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#screen-ledger .wh-foot{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#screen-ledger .label-caps{ padding-right:30px; }
+
+/* Outflow pop-up: opens at a fixed height (about 8 rows); drag the handle up to expand, down to close */
+#outflowSheet .sheet{ height:min(620px, calc(74vh - var(--sat))); transition: transform .45s var(--spring), height .35s var(--spring); }
+#outflowSheet .sheet.expanded{ height:calc(92vh - var(--sat)); }
+#outflowSheet .of-tabs{ position:sticky; top:0; z-index:2; background:var(--bg-elev); padding-top:2px; }
+#relTip{ display:flex; gap:10px; align-items:flex-start; padding:12px; border-radius:var(--radius-sm); background:var(--primary-dim); color:var(--text-dim); font-size:var(--t-sm); line-height:1.45; }
+#relTip .e3d{ width:22px; height:22px; flex-shrink:0; }
+#reliableSheet .perm-ic{ width:34px; height:34px; }
+.seg-n{ font-size:var(--t-2xs); opacity:.7; margin-left:3px; font-variant-numeric:tabular-nums; }
+.seg-n:empty{ display:none; }
+.badge.payer{ background:color-mix(in srgb, var(--warn) 16%, transparent); color:var(--warn); display:inline-flex; align-items:center; gap:3px; }
+.badge.payer .e3d{ width:12px; height:12px; }
+.round-btn.remind-btn{ background:var(--primary-dim); color:var(--primary-2); border:1px solid color-mix(in srgb, var(--primary) 35%, transparent); }
+
+/* Chits tab: collapsible detail boxes */
+.chit-toggle{ width:100%; display:flex; align-items:center; justify-content:center; gap:6px; margin:2px 0 10px; padding:7px; border:1px dashed var(--glass-border); border-radius:12px; background:none; color:var(--text-dim); font-size:var(--t-xs); font-weight:var(--w6); cursor:pointer; }
+.chit-toggle svg{ width:14px; height:14px; transition: transform .35s var(--spring); }
+.chit-card.expanded .chit-toggle svg{ transform:rotate(180deg); }
+.chit-more{ display:grid; grid-template-rows:0fr; transition: grid-template-rows .4s var(--spring); }
+.chit-more > div{ overflow:hidden; min-height:0; }
+.chit-more.open{ grid-template-rows:1fr; }
+.chit-more .metric-grid{ margin-bottom:12px; }
+
+/* what's new tour */
+.coach.tour .coach-hole{ pointer-events:none; }
+.coach-hole.none{ outline:none; animation:none; }
+.coach-foot{ display:flex; align-items:center; gap:10px; margin-top:10px; }
+.coach-count{ flex:1; font-size:var(--t-xs); color:var(--text-faint); font-variant-numeric:tabular-nums; }
+.coach-foot .link-btn{ color:var(--text-dim); }

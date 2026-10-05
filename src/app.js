@@ -5,10 +5,11 @@ import { MAX_FILES, prepareFile, putLocal, thumbUrl, openAttachment, openBlob, s
 import { toast, layoutFab, openSheet, closeSheet, confirmBox, setInvalid, showAlert, clearForm, scrollToError, setBusy, bindSwitch, setSwitch, isOn,
   moveThumb, bindSeg, moveAllThumbs, openStack, skel, setNum, bindNumeric, enhanceSelect, setSelect, setSelectIcons, makeReminderPicker, remSummary, withTransition, flip, handleBackInOverlays, footShadow, fmtNumInput } from './ui.js';
 import { isNative, APP_VERSION, APK_URL, setBarsStyle, scheduleReminders, notifyPermission, requestNotifyPermission, saveFile, checkForUpdate, openExternal, notifyUpdate, prepareUpdateChannel, testNotification,
-  canInstallUpdates, allowInstallUpdates, downloadAndInstall, pickContact, setLauncherIcon, schedulePlanNotice } from './native.js';
+  canInstallUpdates, allowInstallUpdates, downloadAndInstall, pickContact, setLauncherIcon, schedulePlanNotice, saveToGallery,
+  reliabilityStatus, askBatteryUnrestricted, openAppSettings, openNotificationSettings } from './native.js';
 import { paymentRows, summaryRow, buildCsv, buildPdf } from './export.js';
 import { lendState, lendDue, splitPayment, rateLabel } from './ledger.js';
-import { registerDevice, listDevices, revokeDevice, forgetDevice, deviceId, normPhone, fmtPhone, PHONE_RE, saveProfile as saveRemoteProfile, fetchShares, shareUpsert, shareRespond, shareAddPayment, shareRemove } from './cloud.js';
+import { registerDevice, listDevices, revokeDevice, forgetDevice, deviceId, normPhone, fmtPhone, PHONE_RE, saveProfile as saveRemoteProfile, fetchShares, shareUpsert, shareRespond, shareAddPayment, shareRemove, subscribeLive } from './cloud.js';
 import { logoColors, logoSVG } from './logo.js';
 import { BANK_GROUPS, OTHER_BANK, findBank, bankFromIfsc, shortName, IFSC_RE, maskAcct, bankBadgeHTML, bankColor, lookupIfsc } from './banks.js';
 import { PIN_RE, lookupPin, ageFrom } from './places.js';
@@ -44,6 +45,7 @@ const bankTagHTML = it => { const b = it.bankId && (store.state.settings.banks |
 const clipHTML = it => fileCount(it) ? `<button class="clip-badge" data-act="files" aria-label="${fileCount(it)} documents"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>${fileCount(it)}</button>` : '';
 const alertWindow = it => Math.max(7, ...effReminders(it));
 const paidRecently = it => it.kind === 'bill' && !!it.lastPaid && diffDays(T, it.due) > alertWindow(it);
+const paidByOther = it => it.kind === 'bill' && !!it.payer?.name;
 const itemPaid = it => it.kind === 'chit' ? it.paidIn : it.paid;
 const itemRemaining = it => it.status !== 'active' ? 0 : it.kind === 'chit' ? (it.taken ? it.installment * (it.members - it.roundsDone) : 0) : (it.ongoing ? 0 : it.amount * it.tenureLeft);
 const catColor = c => { const cs = PALETTES[palKey(st().settings.palette)].cats, col = cs[((c?.ci ?? 0) % cs.length + cs.length) % cs.length];
@@ -80,14 +82,17 @@ function computeAlerts(){
 function reminderPlan(){
   const lendEntries = activeLends().filter(lendDue).map(it => ({ id:it.id, name:lendWho(it), due:lendDue(it), offsets:it.reminders ?? [1],
     amount: lendState(it, lendDue(it)).outstanding, lend:true }));
-  return { enabled: st().settings.alertsOn, entries: activeItems().map(it => ({ id:it.id, name:it.name, due:nextDue(it), offsets:effReminders(it),
+  return { enabled: st().settings.alertsOn, entries: activeItems().map(it => ({ id:it.id, name: paidByOther(it) ? `${it.name} (${it.payer.name} pays)` : it.name, due:nextDue(it), offsets:effReminders(it),
     amount: it.kind === 'chit' ? it.installment : it.amount, chit: it.kind === 'chit', round: it.kind === 'chit' ? it.roundsDone + 1 : null })).concat(lendEntries) };
 }
 
 function totals(){
   let loanDebt = 0, loanPaid = 0, chitDebt = 0, monthly = 0, savings = 0, commission = 0, savingComm = 0, takenCount = 0, savingCount = 0, lastEnd = null;
+  let othersMonthly = 0, othersCount = 0, othersLeft = 0;
   const byCat = {};
   for(const it of activeItems()){
+    // EMIs on my name that someone else pays are tracked, but not counted as my debt or outflow
+    if(paidByOther(it)){ othersMonthly += it.amount / ev(it); othersCount++; if(!it.ongoing) othersLeft += it.amount * it.tenureLeft; continue; }
     const m = it.kind === 'chit' ? it.installment / it.interval : it.amount / ev(it);
     monthly += m; byCat[it.catId] = (byCat[it.catId] || 0) + m;
     if(it.kind === 'bill'){
@@ -100,7 +105,7 @@ function totals(){
       else { savings += it.paidIn; savingCount++; savingComm += it.commission; }
     }
   }
-  return { debt: loanDebt + chitDebt, loanDebt, loanPaid, chitDebt, monthly, savings, commission, savingComm, takenCount, savingCount, lastEnd, byCat,
+  return { debt: loanDebt + chitDebt, loanDebt, loanPaid, chitDebt, monthly, savings, commission, savingComm, takenCount, savingCount, lastEnd, byCat, othersMonthly, othersCount, othersLeft,
            repaidPct: (loanPaid + loanDebt) ? Math.round(loanPaid / (loanPaid + loanDebt) * 100) : 0 };
 }
 
@@ -120,7 +125,7 @@ function setSetting(patch){ commit(() => Object.assign(st().settings, patch)); a
    RENDER
 ================================================================ */
 const seen = new Set(), prevPct = {}, lastNum = {};
-let filter = 'all', sortMode = 'due', page = 'home', byView = 'active';
+let filter = 'all', sortMode = 'due', page = 'home', byView = 'active', chitFilter = 'all';
 
 const HAS3D = new Set(Object.keys(E3D).map(e3dCode));
 /** A bundled 3D image for the emoji when we have one, else the plain emoji. */
@@ -163,10 +168,11 @@ function billCard(it, i){
   const recent = paidRecently(it);
   return `<article class="item-card ${enterCls(it.id)}" data-id="${it.id}" style="--accent:${catColor(c)};--i:${i}">
     <div class="ic-top"><div class="ic-id"><div class="glyph">${glyphHTML(c, it)}</div><div style="min-width:0"><div class="ic-name">${esc(it.name)}</div>
-      <div class="ic-meta"><span class="badge ${st_.cls}">${st_.label}</span><span class="due-text ${st_.urgent ? 'urgent' : ''}">${st_.text}</span>${bankTagHTML(it)}${clipHTML(it)}</div></div></div>
+      <div class="ic-meta"><span class="badge ${st_.cls}">${st_.label}</span>${paidByOther(it) ? `<span class="badge payer">${e3d('👥')}${esc(it.payer.name)} pays</span>` : ''}<span class="due-text ${st_.urgent ? 'urgent' : ''}">${st_.text}</span>${bankTagHTML(it)}${clipHTML(it)}</div></div></div>
       <div class="ic-amt"><div class="amt">${fmtMoney(it.amount)}</div><div class="per">/ ${perLabel(ev(it))}</div></div></div>
     ${middle}
     <div class="ic-foot"><div class="figs">${figs}</div><div class="actions">
+      ${paidByOther(it) ? `${it.payer.phone ? `<button type="button" class="round-btn call-btn" data-act="pcall" aria-label="Call ${esc(it.payer.name)}">${ICON.call}</button>` : ''}<button type="button" class="round-btn remind-btn" data-act="premind" aria-label="Send ${esc(it.payer.name)} a reminder">${ICON.bell}</button>` : ''}
       <button class="round-btn ghost" data-act="edit" aria-label="Edit ${esc(it.name)}">${ICON.edit}</button>
       <button class="pay-btn ${recent ? 'paid' : ''}" data-act="pay" aria-label="${recent ? 'Paid this cycle' : 'Mark as paid'}">${ICON.check}<span>${recent ? 'Paid' : 'Mark as paid'}</span></button></div></div>
   </article>`;
@@ -227,12 +233,15 @@ function renderHome(){
   else { incEl.classList.remove('add'); countTo(incEl, 'inc', inc); }
   countTo($('#msOut'), 'out', Math.round(t.monthly));
   countTo($('#msSave'), 'sav', t.savings);
+  $('#othersTile').classList.toggle('hidden', !t.othersCount);
+  if(t.othersCount){ countTo($('#msOthers'), 'oth', Math.round(t.othersMonthly)); $('#msOthersFoot').textContent = `${t.othersCount} EMI${t.othersCount > 1 ? 's' : ''} on your name · per month`; }
   const act = activeItems(), counts = {};
   act.forEach(i => counts[i.catId] = (counts[i.catId] || 0) + 1);
-  if(filter !== 'all' && !counts[filter]) filter = 'all';
+  if(filter === 'others' ? !t.othersCount : filter !== 'all' && !counts[filter]) filter = 'all';
   $('#chips').innerHTML = act.length ? `<button class="chip ${filter === 'all' ? 'active' : ''}" data-f="all">All <span class="n">${act.length}</span></button>` +
-    st().cats.filter(c => counts[c.id]).map(c => `<button class="chip ${filter === c.id ? 'active' : ''}" data-f="${c.id}">${c.emoji ? e3d(c.emoji, 'chip-3d') : ''}${esc(c.name)} <span class="n">${counts[c.id]}</span></button>`).join('') : '';
-  const list = act.filter(i => filter === 'all' || i.catId === filter);
+    st().cats.filter(c => counts[c.id]).map(c => `<button class="chip ${filter === c.id ? 'active' : ''}" data-f="${c.id}">${c.emoji ? e3d(c.emoji, 'chip-3d') : ''}${esc(c.name)} <span class="n">${counts[c.id]}</span></button>`).join('')
+    + (t.othersCount ? `<button class="chip ${filter === 'others' ? 'active' : ''}" data-f="others">${e3d('👥', 'chip-3d')}Paid by others <span class="n">${t.othersCount}</span></button>` : '') : '';
+  const list = act.filter(i => filter === 'all' || (filter === 'others' ? paidByOther(i) : i.catId === filter));
   list.sort(sortMode === 'due' ? (a, b) => dayNum(nextDue(a)) - dayNum(nextDue(b)) : (a, b) => (b.kind === 'chit' ? b.installment : b.amount) - (a.kind === 'chit' ? a.installment : a.amount));
   $('#activeCount').textContent = list.length ? `(${list.length})` : '';
   $('#sortBtn').classList.toggle('hidden', list.length < 2);
@@ -276,6 +285,18 @@ function renderStats(){
   }
 }
 
+/* chit cards on the Chits tab: the four detail boxes collapse; opened ones are remembered */
+const CHIT_OPEN_KEY = 'finly-chit-open';
+const chitOpenSet = () => { try{ return new Set(JSON.parse(localStorage.getItem(CHIT_OPEN_KEY) || '[]')); }catch{ return new Set(); } };
+const chitOpen = id => chitOpenSet().has(id);
+function toggleChit(card){
+  const id = card.dataset.id, set = chitOpenSet(), open = !set.has(id);
+  open ? set.add(id) : set.delete(id);
+  try{ localStorage.setItem(CHIT_OPEN_KEY, JSON.stringify([...set])); }catch{ /* full */ }
+  card.classList.toggle('expanded', open);
+  card.querySelector('.chit-more').classList.toggle('open', open);
+  const t = card.querySelector('.chit-toggle'); t.setAttribute('aria-expanded', String(open)); t.querySelector('span').textContent = open ? 'Hide details' : 'Show details';
+}
 function chitDetail(it, i){
   const c = cat('chit'), r = it.roundsDone + 1, due = nextDue(it), taken = !!it.taken, left = it.members - it.roundsDone;
   const meta = `${fmtMoney(it.pot)} · ${it.members} people · every ${it.interval === 1 ? 'month' : it.interval + ' months'}${it.agent ? ' · Agent ' + esc(it.agent) : ''}`;
@@ -295,11 +316,12 @@ function chitDetail(it, i){
       <div class="metric"><div class="fig-label">Still waiting</div><div class="fig-value">${it.members - it.roundsDone}</div><div class="fig-sub">people incl. you</div></div>`;
     note = `You haven't taken the pot yet. Each round you get a share of the winning bid, so you pay less — counted as savings until you take it.`;
   }
-  return `<article class="chit-card ${enterCls('w_' + it.id)}" data-id="${it.id}" data-state="${taken ? 'taken' : 'saving'}" style="--i:${i}">
+  return `<article class="chit-card ${enterCls('w_' + it.id)} ${chitOpen(it.id) ? 'expanded' : ''}" data-id="${it.id}" data-state="${taken ? 'taken' : 'saving'}" style="--i:${i}">
     <div class="chit-head"><div style="min-width:0"><div class="chit-name">${c?.emoji ? e3d(c.emoji, 'name-3d') : ''}${esc(it.name)} <button type="button" class="info-i" data-info="${esc(note)}" aria-label="What this means">i</button> ${clipHTML(it)}</div><div class="chit-meta">${meta}</div></div>
       <span class="status-pill ${taken ? 'debt' : 'save'}">${taken ? 'Debt' : 'Savings'}</span></div>
     <div class="progress-row"><div class="progress-labels"><span>Rounds <b>${it.roundsDone} of ${it.members}</b></span><span>${Math.round(it.roundsDone / it.members * 100)}%</span></div>${barHTML('w_' + it.id, Math.round(it.roundsDone / it.members * 100))}</div>
-    <div class="metric-grid">${metrics}</div>
+    <button type="button" class="chit-toggle" data-act="ctoggle" aria-expanded="${chitOpen(it.id)}"><span>${chitOpen(it.id) ? 'Hide details' : 'Show details'}</span>${ICON.chevron}</button>
+    <div class="chit-more ${chitOpen(it.id) ? 'open' : ''}"><div><div class="metric-grid">${metrics}</div></div></div>
     <div class="chit-actions">
       <button class="btn btn-primary btn-grow nowrap" data-act="pay" aria-label="Mark round ${r} as paid">${ICON.check}Mark as paid</button>
       <button class="round-btn ghost" data-act="edit" aria-label="Edit">${ICON.edit}</button>
@@ -313,8 +335,12 @@ function renderWallet(){
   countTo($('#whSave'), 'wsave', t.savings); countTo($('#whDebt'), 'wdebt', t.chitDebt);
   $('#whSaveFoot').textContent = `${t.savingCount} not taken · +${fmtMoney(t.savingComm)} commission`;
   $('#whDebtFoot').textContent = `${t.takenCount} taken · full amount each round`;
-  const chits = activeItems().filter(i => i.kind === 'chit');
-  $('#chitList').innerHTML = chits.length ? chits.map(chitDetail).join('') : firstLoad() ? skel.cards(1) : `<div class="empty"><div class="em">${e3d('🤝')}</div><b>No active chit funds</b>Tap + to add one.</div>`;
+  const all = activeItems().filter(i => i.kind === 'chit'), saving = all.filter(i => !i.taken), debt = all.filter(i => i.taken);
+  $('#cfAll').textContent = all.length || ''; $('#cfSave').textContent = saving.length || ''; $('#cfDebt').textContent = debt.length || '';
+  const chits = chitFilter === 'save' ? saving : chitFilter === 'debt' ? debt : all;
+  $('#chitList').innerHTML = chits.length ? chits.map(chitDetail).join('') : firstLoad() ? skel.cards(1)
+    : all.length ? `<div class="empty"><div class="em">${e3d(chitFilter === 'debt' ? '🎉' : '🤝')}</div><b>${chitFilter === 'debt' ? 'No chits taken yet' : 'No chits in savings'}</b>${chitFilter === 'debt' ? 'Chits move here once you take the pot.' : 'Every active chit has been taken.'}</div>`
+    : `<div class="empty"><div class="em">${e3d('🤝')}</div><b>No active chit funds</b>Tap + to add one.</div>`;
   const cl = closedItems();
   $('#closedCount').textContent = cl.length ? `(${cl.length})` : '';
   $('#closedList').innerHTML = cl.length ? cl.map(it => { const c = cat(it.catId);
@@ -407,6 +433,7 @@ function go(p){
 export function handleBack(){
   if(forcedUpdate) return true;
   if(coachStep && !openStack.length) return true;
+  if(tour){ endTour(); return true; }
   if(handleBackInOverlays()) return true;
   if(page === 'stats'){ go('profile'); return true; }
   if(page !== 'home'){ go('home'); return true; }
@@ -450,7 +477,10 @@ function onCardAction(e){
   const act = btn.dataset.act;
   if(act === 'edit') return it.kind === 'chit' ? openChitSheet(it) : openBillSheet(it);
   if(act === 'hist') return openChitRounds(it);
+  if(act === 'ctoggle') return toggleChit(card);
   if(act === 'files') return openFilesSheet(it);
+  if(act === 'pcall') return callNumber(it.payer.name, it.payer.phone);
+  if(act === 'premind') return openEmiReminder(it);
   if(act === 'date') return openAuctionDate(it);
   if(act === 'pay'){ if(btn.dataset.busy) return; btn.dataset.busy = '1'; setTimeout(() => delete btn.dataset.busy, 700); return it.kind === 'chit' ? openRoundSheet(it) : payBill(it); }
 }
@@ -583,7 +613,7 @@ function openFilesSheet(it){
 }
 const queueItemFiles = it => (it.files || []).forEach(a => a.path && queueFileDelete(a.path));
 
-let editingBill = null, billRemTouched = false, billRem, subTouched = false;
+let editingBill = null, billRemTouched = false, billRem, subTouched = false, payerAutoName = '';
 function fillSubSelect(selected){
   const c = cat($('#bCat').value), subs = c?.subs || [];
   $('#bSub').innerHTML = `<option value="">${subs.length ? 'Not set' : 'No types'}</option>` + subs.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
@@ -625,6 +655,9 @@ function openBillSheet(it){
   subTouched = !!it?.subId; fillSubSelect(it?.subId);
   setNum('bAmt', it ? it.amount : '');
   setSwitch('bOngoing', it ? it.ongoing : false);
+  setSwitch('bOthers', !!it?.payer); $('#bOthersFields').classList.toggle('hidden', !it?.payer);
+  $('#bPayer').value = it?.payer?.name || ''; $('#bPayerPhone').value = fmtPhone(it?.payer?.phone || ''); payerAutoName = '';
+  $('#bPayerPick').classList.toggle('hidden', !isNative);
   setNum('bTen', it && !it.ongoing ? it.tenureTotal : '');
   setNum('bPaidM', it && !it.ongoing ? it.tenureTotal - it.tenureLeft : 0);
   $('#bPaidM').disabled = !!it;
@@ -652,6 +685,9 @@ async function saveBill(){
     if(!editingBill) bad += setInvalid('bPaidG', !(isInt(paidM) && paidM >= 0 && (!isInt(ten) || paidM < ten)), 'bPaidErr', 'Must be less than the total.');
   }
   bad += setInvalid('bDueG', !due);
+  const others = isOn('bOthers'), payerName = $('#bPayer').value.trim(), payerRaw = $('#bPayerPhone').value.trim(), payerPhone = payerRaw ? normPhone(payerRaw) : '';
+  if(others){ bad += setInvalid('bPayerG', !payerName); if(payerPhone) bad += setInvalid('bPayerPhoneG', !PHONE_RE.test(payerPhone)); }
+  const payer = others ? { name: payerName, phone: payerPhone } : null;
   if(bad){ showAlert('billAlert', `Please fix ${bad} highlighted field${bad > 1 ? 's' : ''}.`); scrollToError('billSheet'); return; }
   const rem = billRemTouched ? billRem.get() : null;
   const { files, afterSave } = await attCommit();
@@ -660,7 +696,7 @@ async function saveBill(){
     const id = editingBill.id;
     commit(() => {
       const x = findItem(id), paidMonths = x.ongoing ? 0 : x.tenureTotal - x.tenureLeft;
-      Object.assign(x, { name, catId, subId, amount:amt, every, ongoing, due, anchorDay:parseISO(due).getDate(), reminders:rem, files, bankId });
+      Object.assign(x, { name, catId, subId, amount:amt, every, ongoing, due, anchorDay:parseISO(due).getDate(), reminders:rem, files, bankId, payer });
       if(ongoing){ x.tenureTotal = null; x.tenureLeft = null; } else { x.tenureTotal = ten; x.tenureLeft = ten - paidMonths; }
     }, { type:'success', title:'Changes saved', body:name });
     afterSave();
@@ -668,7 +704,7 @@ async function saveBill(){
   } else {
     const id = uid();
     commit(() => {
-      const b = { id, kind:'bill', catId, subId, name, amount:amt, every, ongoing, bankId, tenureTotal: ongoing ? null : ten, tenureLeft: ongoing ? null : ten - paidM,
+      const b = { id, kind:'bill', catId, subId, name, amount:amt, every, ongoing, bankId, payer, tenureTotal: ongoing ? null : ten, tenureLeft: ongoing ? null : ten - paidM,
         paid: ongoing ? 0 : amt * paidM, due, anchorDay: parseISO(due).getDate(), reminders:rem, lastPaid:null, history:[], status:'active', files };
       if(!ongoing && paidM > 0) b.history.push({ date:T, amount: amt * paidM, n: paidM, opening:true });
       st().items.push(b);
@@ -1131,7 +1167,7 @@ async function saveRound(){
 /* ================================================================
    DEVICES — every phone and browser signed in to this account
 ================================================================ */
-let devCheckAt = 0, serverV2 = true;
+let devCheckAt = 0, serverV2 = true, liveTimer = null;
 async function checkDevice(force){
   if(!navigator.onLine || (!force && Date.now() - devCheckAt < 10 * 60e3)) return;
   devCheckAt = Date.now();
@@ -1203,6 +1239,8 @@ const needsWhatsapp = () => !st().settings.whatsapp;
 function startCoach(){ if(!needsWhatsapp()) return; coachStep = page === 'profile' ? 2 : 1; drawCoach(); }
 function drawCoach(){
   const c = $('#coach');
+  if(tour) return drawTour();
+  $('#coachFoot').classList.add('hidden'); c.classList.remove('tour');
   if(!coachStep || openStack.length){ c.classList.add('hidden'); return; }
   const target = coachStep === 1 ? $('.nav-item[data-page="profile"]') : $('#profileCard');
   if(!target) return;
@@ -1218,7 +1256,67 @@ function drawCoach(){
     $('#coachArrow').style.left = Math.max(18, Math.min(tip.offsetWidth - 30, r.left + r.width / 2 - tip.getBoundingClientRect().left - 9)) + 'px';
   });
 }
+/* ---------- what's new tour: after an update, point at each new feature once ---------- */
+const TOUR_VERSION = '2.1';
+const TOUR_STEPS = [
+  { title:'Finly 2.1 is here', text:'Updates now install right inside Finly with a progress bar. Here\'s a quick look at what else is new.' },
+  { page:'home', sel:'#outflowTile', title:'Outflow by category', text:'Opens at a steady height now. Drag the handle up to see more rows.' },
+  { page:'home', sel:'#fab', title:'EMIs someone else pays', text:'When you add an EMI, turn on "Paid by someone else". It shows in a "Paid by others" card, with call and reminder buttons.' },
+  { page:'ledger', sel:'#screen-ledger .wallet-hero', title:'Lend & borrow', text:'To receive and To pay back sit side by side, and new requests appear by themselves.' },
+  { page:'wallet', sel:'#chitFilter', title:'Chit tabs', text:'Switch between All, Savings and Debt chits.' },
+  { page:'wallet', sel:'#chitList .chit-toggle', title:'Fold the details', text:'Tap Show details to open a chit\'s four detail boxes, and again to fold them.' },
+  { page:'profile', sel:'#relRow', title:'Reminders on time', text:'Check and fix anything that could delay reminders: notifications, battery and background use.' },
+  { page:'profile', sel:'#openPlan', title:'Save to Gallery', text:'The monthly plan image now saves straight to your Gallery.' }
+];
+let tour = null;
+const shown = el => !!el && el.getClientRects().length > 0 && !el.closest('.hidden');
+function maybeStartTour(tries = 0){
+  if(localStorage.getItem('finly-tour') === TOUR_VERSION) return;
+  if(!st().items.length && !localStorage.getItem('finly-whatsnew-2')){ localStorage.setItem('finly-tour', TOUR_VERSION); return; }   // brand-new account: nothing changed for them
+  if(needsWhatsapp() || coachStep) return;
+  if(openStack.length){ if(tries < 40) setTimeout(() => maybeStartTour(tries + 1), 1000); return; }
+  localStorage.setItem('finly-tour', TOUR_VERSION);
+  tour = { i:0 }; drawTour();
+}
+function endTour(){ tour = null; $('#coach').classList.add('hidden'); $('#coach').classList.remove('tour'); go('home'); setTimeout(maybeAskReliability, 900); }
+function drawTour(){
+  const c = $('#coach');
+  while(tour && tour.i < TOUR_STEPS.length){
+    const st_ = TOUR_STEPS[tour.i];
+    if(st_.page && page !== st_.page){ c.classList.add('hidden'); go(st_.page); setTimeout(drawTour, 480); return; }
+    const t = st_.sel ? $(st_.sel) : null;
+    if(st_.sel && !shown(t)){ tour.i++; continue; }
+    if(t?.id === 'fab') t.classList.remove('fab-away');   // feature not on screen for this person: skip that step
+    c.classList.remove('hidden'); c.classList.add('tour');
+    $('#coachFoot').classList.remove('hidden');
+    $('#coachTitle').textContent = st_.title; $('#coachText').textContent = st_.text;
+    const left = TOUR_STEPS.slice(tour.i).filter(x => !x.sel || x.page !== page || shown($(x.sel))).length;
+    $('#coachCount').textContent = `${tour.i + 1} of ${tour.i + left}`;
+    $('#coachNext').textContent = left <= 1 ? 'Done' : 'Next';
+    const hole = $('#coachHole'), tip = $('#coachTip');
+    if(!t){
+      Object.assign(hole.style, { left:'50%', top:'50%', width:'0px', height:'0px' }); hole.classList.add('none');
+      tip.classList.remove('below'); tip.style.top = ''; tip.style.bottom = Math.round(innerHeight / 2 - 80) + 'px'; $('#coachArrow').style.display = 'none';
+      return;
+    }
+    hole.classList.remove('none'); $('#coachArrow').style.display = '';
+    const fixed = getComputedStyle(t).position === 'fixed';
+    if(!fixed) t.scrollIntoView({ block:'center', behavior: reduceMotion() ? 'auto' : 'smooth' });
+    setTimeout(() => {
+      if(!tour) return;
+      const r = t.getBoundingClientRect(), pad = 6;
+      Object.assign(hole.style, { left:(r.left - pad) + 'px', top:(r.top - pad) + 'px', width:(r.width + pad * 2) + 'px', height:(r.height + pad * 2) + 'px' });
+      const below = r.top < innerHeight / 2;
+      tip.classList.toggle('below', below);
+      tip.style.top = below ? (r.bottom + 22) + 'px' : ''; tip.style.bottom = below ? '' : (innerHeight - r.top + 22) + 'px';
+      $('#coachArrow').style.left = Math.max(18, Math.min(tip.offsetWidth - 30, r.left + r.width / 2 - tip.getBoundingClientRect().left - 9)) + 'px';
+    }, fixed ? 30 : 420);
+    return;
+  }
+  if(tour) endTour();
+}
 function onCoachClick(e){
+  if(tour) return;
   const r = $('#coachHole').getBoundingClientRect();
   if(e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
   if(coachStep === 1){ go('profile'); coachStep = 2; setTimeout(drawCoach, 480); }
@@ -1227,7 +1325,7 @@ function onCoachClick(e){
 function afterWhatsappSaved(){
   if(needsWhatsapp()) return;
   if(coachStep){ coachStep = 0; drawCoach(); toast({ type:'success', title:'WhatsApp number saved', body:'Thanks! You\'re all set for Finly 2.0.' }); }
-  setTimeout(maybeWhatsNew, 900);
+  setTimeout(() => { maybeWhatsNew(); setTimeout(() => maybeStartTour(), 900); }, 900);
 }
 
 /* ---------- what's new (once, for people updating from 1.x) ---------- */
@@ -1257,7 +1355,7 @@ function planRows(key){
   for(const it of activeItems()){
     if(it.kind === 'bill'){
       let d = it.due, left = it.ongoing ? 1e4 : it.tenureLeft;
-      while(left > 0 && dayNum(d) <= dayNum(to)){ if(inMonth(d)) rows.push({ date:d, name:it.name, sub:catLabel(it), amount:it.amount, bank:bank(it) }); d = addMonths(d, ev(it), it.anchorDay); left--; }
+      while(left > 0 && dayNum(d) <= dayNum(to)){ if(inMonth(d)) rows.push({ date:d, name:it.name, sub: paidByOther(it) ? `${catLabel(it)} · ${it.payer.name} pays` : catLabel(it), amount:it.amount, bank:bank(it), other: paidByOther(it) }); d = addMonths(d, ev(it), it.anchorDay); left--; }
     } else {
       for(let r = it.roundsDone + 1; r <= it.members; r++){
         const d = r === it.roundsDone + 1 ? nextDue(it) : roundDate(it, r);
@@ -1279,7 +1377,7 @@ function drawPlan(key){
   const month = new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month:'long', year:'numeric' });
   g.fillStyle = pal.primary2; g.font = `600 34px ${F}`; g.fillText('FINLY · MONTHLY PLAN', 72, 108);
   g.fillStyle = '#FFFFFF'; g.font = `800 76px ${F}`; g.fillText(month, 72, 196);
-  const total = rows.reduce((t, r) => t + r.amount, 0);
+  const total = rows.filter(r => !r.other).reduce((t, r) => t + r.amount, 0);
   g.fillStyle = 'rgba(255,255,255,.65)'; g.font = `500 34px ${F}`;
   g.fillText(`${displayName()} · ${rows.length} payment${rows.length === 1 ? '' : 's'} · ${fmtMoney(Math.round(total))}`, 72, 256);
   let yy = head;
@@ -1340,18 +1438,85 @@ async function sharePlan(){
 }
 
 /* ================================================================
+   EMI REMINDER IMAGE — for EMIs on my name that someone else pays
+================================================================ */
+let erBlob = null, erName = '', erSeq = 0;
+function drawEmiReminder(it){
+  const pal = paletteVars(st().settings.palette, 'dark'), W = 1080, H = 1360, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'), F = '-apple-system, "Segoe UI", Roboto, sans-serif', due = nextDue(it), d = diffDays(T, due), dd = parseISO(due);
+  const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, pal.bgElev); bg.addColorStop(1, pal.bg); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  const glow = g.createRadialGradient(900, 120, 10, 900, 120, 700); glow.addColorStop(0, pal.primary + '55'); glow.addColorStop(1, pal.primary + '00'); g.fillStyle = glow; g.fillRect(0, 0, W, H);
+  g.fillStyle = pal.primary2; g.font = `700 32px ${F}`; g.fillText('EMI REMINDER', 80, 120);
+  g.fillStyle = 'rgba(255,255,255,.8)'; g.font = `500 40px ${F}`; g.fillText(`Hi ${it.payer.name},`, 80, 200);
+  g.fillStyle = '#FFFFFF'; g.font = `800 64px ${F}`; let nm = it.name; while(g.measureText(nm).width > W - 160 && nm.length > 3) nm = nm.slice(0, -2); g.fillText(nm === it.name ? nm : nm + '…', 80, 290);
+  g.fillStyle = pal.gold; g.font = `800 120px ${F}`; g.fillText(fmtMoney(it.amount), 80, 450);
+  const status = d < 0 ? `Overdue by ${-d} day${d === -1 ? '' : 's'}` : d === 0 ? 'Due today' : d === 1 ? 'Due tomorrow' : `Due in ${d} days`;
+  g.fillStyle = d <= 1 ? pal.rose + '33' : pal.primary + '33'; g.beginPath(); g.roundRect(80, 500, 920, 120, 30); g.fill();
+  g.fillStyle = d <= 1 ? pal.rose : pal.primary2; g.font = `800 46px ${F}`; g.fillText(status, 120, 575);
+  g.fillStyle = '#FFFFFF'; g.font = `600 36px ${F}`; g.textAlign = 'right';
+  g.fillText(dd.toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short', year:'numeric' }), 960, 573); g.textAlign = 'left';
+  const b = it.bankId && bankById(it.bankId), facts = [
+    ['Paid from', b ? bankLabel(b) : 'Not set'],
+    ['Repeats', `Every ${perLabel(ev(it))}`],
+    ...(it.ongoing ? [['Tenure', 'Ongoing']] : [['Payments left', `${it.tenureLeft} of ${it.tenureTotal}`], ['Still to pay', fmtMoney(it.amount * it.tenureLeft)]])];
+  let y = 690;
+  for(const [k, v] of facts){
+    g.fillStyle = 'rgba(255,255,255,.06)'; g.beginPath(); g.roundRect(80, y, 920, 96, 24); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.6)'; g.font = `500 32px ${F}`; g.fillText(k, 120, y + 60);
+    g.fillStyle = '#FFFFFF'; g.font = `700 36px ${F}`; g.textAlign = 'right'; g.fillText(v, 960, y + 61); g.textAlign = 'left';
+    y += 114;
+  }
+  g.fillStyle = 'rgba(255,255,255,.75)'; g.font = `500 32px ${F}`; g.fillText('Please pay on time to avoid late charges. Thank you!', 80, H - 110);
+  g.fillStyle = 'rgba(255,255,255,.45)'; g.font = `500 26px ${F}`; g.fillText(`From ${displayName()} · sent with Finly`, 80, H - 56);
+  return c;
+}
+async function openEmiReminder(it){
+  const seq = ++erSeq, img = $('#erImg');
+  erBlob = null; img.classList.add('hidden'); $('#erSkel').classList.remove('hidden');
+  $('#erSkel').innerHTML = `<div class="skel-wrap" style="padding:24px">${skel.line('35%', 12)}${skel.line('50%', 18)}${skel.line('70%', 28)}${skel.line('45%', 40)}${skel.block(60, 18)}</div><div class="skel-wrap" style="padding:0 18px 22px">${skel.rows(3)}</div>`;
+  $('#erTitle').textContent = `Remind ${it.payer.name}`; $('#erSub').textContent = `${it.name} · ${fmtMoney(it.amount)}`;
+  ['#erShare', '#erSave'].forEach(x => { $(x).disabled = true; });
+  openSheet('emiRemSheet');
+  await new Promise(r => setTimeout(r, 360));
+  const blob = await new Promise(r => drawEmiReminder(it).toBlob(r, 'image/png'));
+  if(seq !== erSeq) return;
+  erBlob = blob; erName = `finly-reminder-${slug(it.name)}-${T}.png`;
+  if(img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+  img.onload = () => { if(seq !== erSeq) return; $('#erSkel').classList.add('hidden'); img.classList.remove('hidden'); img.classList.add('fade-in'); };
+  img.src = URL.createObjectURL(blob);
+  ['#erShare', '#erSave'].forEach(x => { $(x).disabled = false; });
+}
+
+/* ---------- images: share (WhatsApp etc.) or save straight to the gallery ---------- */
+async function shareImage(blob, name, title){
+  try{
+    if(!isNative && navigator.canShare?.({ files:[new File([blob], name, { type:'image/png' })] })) await navigator.share({ files:[new File([blob], name, { type:'image/png' })], title });
+    else await saveFile(name, blob);
+  }catch(e){ if(!/abort|cancel/i.test(String(e?.message || e))) toast({ type:'error', title:'Couldn\'t share the image', body:'Please try again.' }); }
+}
+async function saveImageToGallery(blob, name){
+  try{
+    if(!isNative){ const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+      return toast({ type:'success', title:'Image downloaded', body:name }); }
+    await saveToGallery(name, blob);
+    toast({ type:'success', title:'Saved to Gallery', body:'Find it in Pictures → Finly.' });
+  }catch(e){ console.error(e); toast({ type:'error', title:'Couldn\'t save the image', body: /permission/i.test(String(e?.message)) ? 'Allow Photos/Storage for Finly, then try again.' : 'Please try again.' }); }
+}
+
+/* ================================================================
    OUTFLOW BREAKDOWN — monthly outflow by category, in a pop-up
 ================================================================ */
 let ofTab = null;
 function openOutflow(){
-  const act = activeItems(), cats = st().cats.filter(c => act.some(i => i.catId === c.id));
+  const all = activeItems(), act = all.filter(i => !paidByOther(i)), others = all.filter(paidByOther);
+  const cats = st().cats.filter(c => act.some(i => i.catId === c.id)).concat(others.length ? [{ id:'others', name:'Paid by others', emoji:'👥' }] : []);
   if(!cats.length) return toast({ type:'warning', title:'Nothing to show yet', body:'Add an EMI, bill or chit to see your monthly outflow.' });
   if(!ofTab || !cats.some(c => c.id === ofTab)) ofTab = cats.some(c => c.id === 'emi') ? 'emi' : cats[0].id;
   const perMonth = it => it.kind === 'chit' ? it.installment / it.interval : it.amount / ev(it);
   const total = act.reduce((t, it) => t + perMonth(it), 0);
-  $('#ofSub').textContent = `${fmtMoney(Math.round(total))} on average each month`;
+  $('#ofSub').textContent = `${fmtMoney(Math.round(total))} on average each month${others.length ? ' · others pay their own EMIs' : ''}`;
   $('#ofTabs').innerHTML = cats.map(c => `<button class="of-tab ${c.id === ofTab ? 'sel' : ''}" data-tab="${c.id}" role="tab" aria-selected="${c.id === ofTab}">${c.emoji ? e3d(c.emoji, 'chip-3d') : ''}${esc(c.name)}</button>`).join('');
-  const list = act.filter(i => i.catId === ofTab).sort((a, b) => perMonth(b) - perMonth(a)), sum = list.reduce((t, it) => t + perMonth(it), 0);
+  const list = (ofTab === 'others' ? others : act.filter(i => i.catId === ofTab)).sort((a, b) => perMonth(b) - perMonth(a)), sum = list.reduce((t, it) => t + perMonth(it), 0);
   $('#ofList').innerHTML = `<div class="of-head"><span>Title</span><span>Amount</span><span>Avg / month</span></div>`
     + list.map(it => `<div class="of-row"><span class="of-name">${esc(it.name)}</span><span>${fmtMoney(it.kind === 'chit' ? it.installment : it.amount)}</span><b>${fmtMoney(Math.round(perMonth(it)))}</b></div>`).join('')
     + `<div class="of-row total"><span class="of-name">Total</span><span></span><b>${fmtMoney(Math.round(sum))}</b></div>`;
@@ -1366,12 +1531,15 @@ let logoSeq = 0;
 function paintLogos(){
   const url = 'data:image/svg+xml;utf8,' + encodeURIComponent(logoSVG(logoColors(st().settings.palette), { rounded:true, id: 'x' + (logoSeq++) }));
   $$('.brand-mark img, img.brand-ic').forEach(i => { i.src = url; });
+  // remembered so the loading screen shows the same colours next time (no navy-then-palette flicker)
+  try{ localStorage.setItem('finly-logo', url); localStorage.setItem('finly-boot-bg', paletteVars(st().settings.palette, st().settings.theme).bg); }catch{ /* full */ }
 }
-function syncLauncherIcon(){
+/** Asks for the home-screen icon to match the palette; Android applies it after you leave Finly, so the app never closes on you. */
+function syncLauncherIcon(userPicked){
   if(!isNative) return;
-  const want = palKey(st().settings.palette);
-  if(localStorage.getItem('finly-launcher') === want) return;
-  setLauncherIcon(want).then(r => { if(r) localStorage.setItem('finly-launcher', want); });
+  setLauncherIcon(palKey(st().settings.palette)).then(r => {
+    if(r?.pending && userPicked) toast({ type:'success', title:'Icon will update', body:'The home-screen icon changes to these colours after you leave Finly.', ms:4500 });
+  });
 }
 
 /* ================================================================
@@ -1408,8 +1576,12 @@ async function refreshShares(){
     const r = await fetchShares();
     sharesMissing = !!r.missing;
     if(r.missing) return;
+    const before = new Set(pendingShares().map(x => x.id));
     shares = r.data || [];
     try{ localStorage.setItem(SHARE_KEY(), JSON.stringify(shares)); }catch{ /* full */ }
+    const fresh = sharesFetched ? pendingShares().filter(x => !before.has(x.id)) : [];
+    if(fresh.length) toast({ type:'success', title: fresh.length === 1 ? `${fresh[0].owner_name || 'Someone'} added an entry with you` : `${fresh.length} new ledger requests`,
+      body:'Open Ledger to accept or decline.', ms:6000 });
     // payments the other person recorded on my entries → into my copy
     const adds = [];
     for(const row of shares.filter(x => x.owner === user.id)){
@@ -1468,9 +1640,10 @@ async function respondShare(id, accept, btn){
 
 /* ---------- call the person (asks first, then opens the phone dialer) ---------- */
 const callBtn = (it, cls = 'round-btn') => it.phone ? `<button type="button" class="${cls} call-btn" data-act="lcall" aria-label="Call ${esc(it.person)}">${ICON.call}</button>` : '';
-function callPerson(it){
-  confirmBox({ title:`Call ${it.person}?`, body:`${fmtPhone(it.phone)} · this opens your phone's dialer.`, yes:'Call', danger:false,
-    onYes: () => { window.location.href = 'tel:' + it.phone; } });
+const callPerson = it => callNumber(it.person, it.phone);
+function callNumber(name, phone){
+  confirmBox({ title:`Call ${name}?`, body:`${fmtPhone(phone)} · this opens your phone's dialer.`, yes:'Call', danger:false,
+    onYes: () => { window.location.href = 'tel:' + phone; } });
 }
 const lendColor = it => it.dir === 'lent' ? 'var(--gold)' : 'var(--rose)';
 const lendGlyph = it => e3d(it.dir === 'lent' ? '💸' : '💵');
@@ -1618,16 +1791,18 @@ function deleteLend(){
 
 /* ---------- choose a person from the phone's contacts ---------- */
 let lendAutoName = '';
-async function chooseContact(){
+const chooseContact = () => pickContactInto({ name:'lName', phone:'lPhone', group:'lPhoneG', after: drawLendCalc, auto: v => (v === undefined ? lendAutoName : (lendAutoName = v)) });
+/** Fills a name + number pair from the phone's contacts; asks right away which number when there are several. */
+async function pickContactInto({ name: nameId, phone: phoneId, group, after = () => {}, auto }){
   let c;
   try{ c = await pickContact(); }
   catch(e){ return toast({ type:'warning', title:'Contacts not allowed', body:'Allow Contacts for Finly in Android Settings → Apps → Finly → Permissions.', ms:7000 }); }
   if(!c) return;
-  const name = $('#lName').value.trim();
-  if(c.name && (!name || name === lendAutoName)){ $('#lName').value = c.name; lendAutoName = c.name; }
+  const name = $('#' + nameId).value.trim();
+  if(c.name && (!name || name === auto())){ $('#' + nameId).value = c.name; auto(c.name); }
   const seen = new Set(), phones = (c.phones || []).map(p => ({ ...p, norm: normPhone(p.number) })).filter(p => PHONE_RE.test(p.norm) && !seen.has(p.norm) && seen.add(p.norm));
-  const use = p => { $('#lPhone').value = fmtPhone(p.norm); $('#lPhoneG').classList.remove('invalid'); drawLendCalc(); };
-  if(!phones.length){ drawLendCalc(); return toast({ type:'warning', title:'No mobile number', body:`${c.name || 'This contact'} has no phone number saved.` }); }
+  const use = p => { $('#' + phoneId).value = fmtPhone(p.norm); $('#' + group).classList.remove('invalid'); after(); };
+  if(!phones.length){ after(); return toast({ type:'warning', title:'No mobile number', body:`${c.name || 'This contact'} has no phone number saved.` }); }
   if(phones.length === 1) return use(phones[0]);
   $('#ppTitle').textContent = c.name || 'Choose a number';
   $('#ppList').innerHTML = phones.map((p, i) => `<button class="pp-row" data-pp="${i}"><span class="pp-ic">${e3d('📱')}</span><span><b>${esc(fmtPhone(p.norm))}</b><small>${esc(p.label || 'Mobile')}${p.primary ? ' · default' : ''}</small></span>${ICON.right}</button>`).join('');
@@ -1990,6 +2165,59 @@ async function refreshNotifyStatus(){
   sub.textContent = !st().settings.alertsOn ? 'Off' : notifyBlocked ? 'Notifications are blocked — tap to allow' : 'Phone notification at 9 AM';
   $('#alertsRow').classList.toggle('warn-row', st().settings.alertsOn && notifyBlocked);
 }
+/* ---------- reminder reliability: notifications on, battery unrestricted, background allowed ---------- */
+const MAKER_TIPS = {
+  xiaomi:'Xiaomi / Redmi / POCO: Settings → Apps → Finly → turn on Autostart, and set Battery saver to "No restrictions".',
+  redmi:'Xiaomi / Redmi / POCO: Settings → Apps → Finly → turn on Autostart, and set Battery saver to "No restrictions".',
+  poco:'Xiaomi / Redmi / POCO: Settings → Apps → Finly → turn on Autostart, and set Battery saver to "No restrictions".',
+  samsung:'Samsung: Settings → Battery → Background usage limits → add Finly to "Never sleeping apps".',
+  oppo:'OPPO / realme: Settings → Apps → Finly → Battery → allow background activity and Auto launch.',
+  realme:'OPPO / realme: Settings → Apps → Finly → Battery → allow background activity and Auto launch.',
+  oneplus:'OnePlus: Settings → Apps → Finly → Battery → Unrestricted, and allow Auto launch.',
+  vivo:'vivo / iQOO: Settings → Battery → Background power consumption → allow Finly, and turn on Autostart.',
+  iqoo:'vivo / iQOO: Settings → Battery → Background power consumption → allow Finly, and turn on Autostart.',
+  huawei:'Huawei / Honor: Settings → Battery → App launch → Finly → Manage manually, all switches on.',
+  honor:'Huawei / Honor: Settings → Battery → App launch → Finly → Manage manually, all switches on.'
+};
+async function reliabilityIssues(){
+  if(!isNative) return null;
+  const [perm, rs] = await Promise.all([notifyPermission(), reliabilityStatus()]);
+  return { perm: perm === 'granted', battery: !!rs?.unrestricted, background: !rs?.backgroundRestricted, exact: rs?.exactAlarms !== false, maker: rs?.maker || '' };
+}
+const issueCount = r => r ? [r.perm, r.battery, r.background, r.exact].filter(x => !x).length : 0;
+async function drawReliability(){
+  const r = await reliabilityIssues(); if(!r) return;
+  const row = (ok, emoji, title, sub, act) => `<div class="perm-row ${ok ? 'ok' : ''}">${e3d(emoji, 'perm-ic')}<div class="perm-txt"><b>${title}</b><span>${sub}</span></div>
+    <button type="button" class="btn btn-secondary btn-sm perm-btn" data-rel="${act}" ${ok ? 'disabled' : ''}>${ok ? 'Done' : 'Fix'}</button></div>`;
+  $('#relList').innerHTML = row(r.perm, '🔔', 'Notifications allowed', r.perm ? 'Finly can show reminders' : 'Reminders are blocked right now', 'notify')
+    + row(r.battery, '🔋', 'Battery: unrestricted', r.battery ? 'Android won\'t put Finly to sleep' : 'Android may delay reminders to save battery', 'battery')
+    + row(r.background, '⚡', 'Background activity allowed', r.background ? 'Finly can run in the background' : 'Background use is restricted for Finly', 'settings')
+    + row(r.exact, '⏰', 'Alarms & reminders', r.exact ? 'Reminders fire at the exact time' : 'Reminders may arrive late', 'settings');
+  const tip = Object.entries(MAKER_TIPS).find(([k]) => r.maker.includes(k))?.[1];
+  $('#relTip').innerHTML = tip ? `${e3d('ℹ️')}<span>${esc(tip)}</span>` : '';
+  $('#relTip').classList.toggle('hidden', !tip);
+  const n = issueCount(r);
+  $('#relSub').textContent = n ? `${n} thing${n > 1 ? 's' : ''} may delay reminders — tap to fix` : 'All set — reminders will arrive on time';
+  $('#relRow').classList.toggle('warn-row', n > 0);
+}
+async function openReliability(){ await drawReliability(); openSheet('reliableSheet'); }
+async function fixReliability(act){
+  if(act === 'notify'){ const p = await requestNotifyPermission(); if(p !== 'granted') await openNotificationSettings(); }
+  else if(act === 'battery') await askBatteryUnrestricted();
+  else await openAppSettings();
+  await drawReliability(); refreshNotifyStatus(); scheduleReminders(reminderPlan);
+}
+/** On open: if something would stop reminders, ask (again after 2 days if they chose Later). */
+async function maybeAskReliability(){
+  if(!isNative || !st().settings.alertsOn || openStack.length || coachStep || tour) return;
+  const r = await reliabilityIssues(); await drawReliability();
+  if(!issueCount(r)) return;
+  const last = Number(localStorage.getItem('finly-rel-asked') || 0);
+  if(Date.now() - last < 2 * 86400e3) return;
+  localStorage.setItem('finly-rel-asked', String(Date.now()));
+  openSheet('reliableSheet');
+}
+
 let askedNotify = false;
 async function maybeAskNotify(){
   if(askedNotify || !isNative || !st().settings.alertsOn) return;
@@ -2161,9 +2389,10 @@ function renderUpdate(){
 }
 /* ---------- in-app update: download with progress, then Android's installer ---------- */
 let updRunning = false;
-function setUpd(p, msg){
+function setUpd(p, msg, phase = 'download'){
   if(p != null){ const pct = Math.round(p * 100); $('#upPct').textContent = pct + '%'; $('#upBar').style.width = pct + '%';
-    if(forcedUpdate) $('#fuGo').textContent = pct < 100 ? `Downloading… ${pct}%` : 'Installing…'; }
+    $('#upBar').classList.toggle('installing', phase === 'install');
+    if(forcedUpdate) $('#fuGo').textContent = phase === 'install' ? `Installing, please wait… ${pct}%` : `Downloading… ${pct}%`; }
   if(msg){ $('#upMsg').textContent = msg; if(forcedUpdate) $('#fuNote').textContent = msg; }
 }
 async function startUpdateDownload(){
@@ -2183,9 +2412,14 @@ async function startUpdateDownload(){
   updRunning = true;
   setUpd(0, 'Downloading the update…');
   try{
-    await downloadAndInstall(APK_URL, p => setUpd(p, p < 1 ? 'Downloading the update…' : null));
-    setUpd(1, 'Download complete. Tap Install on the next screen to finish.');
-    $('#upRetry').textContent = 'Open installer again'; $('#upRetry').classList.remove('hidden');
+    await downloadAndInstall(APK_URL,
+      (p, phase) => { if(phase === 'install'){ $('#upTitle').textContent = 'Installing the update'; setUpd(p, 'Installing, please wait… Finly will restart by itself when it\'s done.', 'install'); }
+        else setUpd(p, 'Downloading the update…'); },
+      status => {
+        if(status === 'confirm') setUpd(null, 'Android is asking you to confirm — tap Update on the screen it shows.');
+        else if(status === 'failed'){ setUpd(null, 'The install didn\'t finish. Please try again.'); $('#upRetry').textContent = 'Try again'; $('#upRetry').classList.remove('hidden'); if(forcedUpdate) $('#fuGo').textContent = 'Try again'; }
+        else if(status === 'success') setUpd(1, 'Updated! Restarting Finly…', 'install');
+      });
   }catch(e){
     console.error(e);
     setUpd(null, navigator.onLine ? 'The download didn\'t finish. Please try again.' : 'You\'re offline. Connect to the internet and try again.');
@@ -2198,11 +2432,13 @@ async function allowUpdates(){
   if(ok){ $('#upAllow').classList.add('hidden'); delete $('#fuGo').dataset.allow; startUpdateDownload(); }
   else setUpd(null, 'Installing updates is still off. Turn on "Allow from this source" for Finly to continue.');
 }
+/** Called before the app opens, so an update shows up straight away instead of a few seconds later. */
+export const preflightUpdate = () => checkUpdates(true).catch(() => null);
 async function checkUpdates(force){
   if(!isNative) return null;   // the web version is always the latest — APK updates don't apply
   if(!navigator.onLine) return null;
   const last = Number(localStorage.getItem('finly-update-check') || 0);
-  if(!force && Date.now() - last < 3600e3) return null;
+  if(!force && Date.now() - last < 5 * 60e3) return null;
   localStorage.setItem('finly-update-check', String(Date.now()));
   const r = await checkForUpdate();
   updateInfo = r.available ? r : null;
@@ -2267,13 +2503,17 @@ function wire(){
   ['lpAmt', 'lpDate'].forEach(id => { $('#' + id).addEventListener('input', drawLendPay); $('#' + id).addEventListener('change', drawLendPay); });
   $('#lpSave').addEventListener('click', saveLendPay);
   $('#openStats').addEventListener('click', () => go('stats'));
+  $('#relRow').addEventListener('click', () => isNative ? openReliability() : toast({ type:'warning', title:'Works in the Android app', body:'Reminder settings are on your phone.' }));
+  $('#relList').addEventListener('click', e => { const b = e.target.closest('[data-rel]'); if(b) fixReliability(b.dataset.rel); });
+  $('#relTest').addEventListener('click', () => $('#testNotifRow').click());
   $('#outflowTile').addEventListener('click', openOutflow);
+  bindSeg($('#chitFilter'), b => { chitFilter = b.dataset.f; flip($('#chitList'), renderWallet); flushBars(); });
   $('#ofTabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if(b && b.dataset.tab !== ofTab){ ofTab = b.dataset.tab; openOutflow(); } });
   $('#openPlan').addEventListener('click', () => openPlan());
   bindSeg($('#plMonth'), b => { const now = parseISO(T), nx = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     openPlan(b.dataset.m === '0' ? monthKey(now.getFullYear(), now.getMonth()) : monthKey(nx.getFullYear(), nx.getMonth())); });
   $('#plShare').addEventListener('click', sharePlan);
-  $('#plSave').addEventListener('click', () => planBlob && saveFile(`finly-plan-${planMonth}.png`, planBlob).catch(() => {}));
+  $('#plSave').addEventListener('click', () => planBlob && saveImageToGallery(planBlob, `finly-plan-${planMonth}.png`));
   $('#openDevices').addEventListener('click', openDevices);
   $('#devList').addEventListener('click', onDevicesClick);
   $('#devOthers').addEventListener('click', signOutOthers);
@@ -2281,6 +2521,8 @@ function wire(){
   $('#lPhone').addEventListener('input', drawLendCalc);
   $('#wnGo').addEventListener('click', () => { closeSheet('whatsNewSheet'); go('ledger'); });
   $('#coach').addEventListener('click', onCoachClick);
+  $('#coachNext').addEventListener('click', e => { e.stopPropagation(); if(!tour) return; tour.i++; drawTour(); });
+  $('#coachSkip').addEventListener('click', e => { e.stopPropagation(); endTour(); });
   addEventListener('resize', () => drawCoach());
   // when the profile sheet closes without a number, walk them back to it
   new MutationObserver(() => { if(!$('#profileSheet').classList.contains('show') && needsWhatsapp() && coachStep) setTimeout(drawCoach, 300); })
@@ -2326,6 +2568,11 @@ function wire(){
   });
 
   bindSwitch('bOngoingRow', 'bOngoing', syncBillForm);
+  bindSwitch('bOthersRow', 'bOthers', on => { $('#bOthersFields').classList.toggle('hidden', !on); if(on) setTimeout(() => $('#bPayer').focus({ preventScroll:true }), 80); footShadow($('#billSheet')); });
+  $('#bPayerPick').addEventListener('click', () => pickContactInto({ name:'bPayer', phone:'bPayerPhone', group:'bPayerPhoneG', auto: v => (v === undefined ? payerAutoName : (payerAutoName = v)) }));
+  $('#othersTile').addEventListener('click', () => { filter = 'others'; renderHome(); flushBars(); $('#chips').scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block:'start' }); });
+  $('#erShare').addEventListener('click', () => erBlob && shareImage(erBlob, erName, 'EMI reminder'));
+  $('#erSave').addEventListener('click', () => erBlob && saveImageToGallery(erBlob, erName));
   $('#bCat').addEventListener('change', () => { fillSubSelect(''); subTouched = false; guessSub(); if(!billRemTouched){ billRem.set(cat($('#bCat').value)?.reminders || [1]); billRem.setNote('Category default'); } });
   $('#bEvery').addEventListener('change', syncBillForm);
   $('#bSub').addEventListener('change', () => { subTouched = true; });
@@ -2398,7 +2645,7 @@ function wire(){
   $('#exGo').addEventListener('click', runExport);
 
   $('#themeRow').addEventListener('click', () => withTransition(() => { setSetting({ theme: st().settings.theme === 'dark' ? 'light' : 'dark' }); }));
-  $('#palGrid').addEventListener('click', e => { const b = e.target.closest('.swatch'); if(!b || b.dataset.pal === palKey(st().settings.palette)) return; withTransition(() => setSetting({ palette:b.dataset.pal })); syncLauncherIcon(); });
+  $('#palGrid').addEventListener('click', e => { const b = e.target.closest('.swatch'); if(!b || b.dataset.pal === palKey(st().settings.palette)) return; withTransition(() => setSetting({ palette:b.dataset.pal })); syncLauncherIcon(true); });
   bindSeg($('#textSizeSeg'), b => setSetting({ text:b.dataset.size }));
   $('#alertsRow').addEventListener('click', async () => {
     if(st().settings.alertsOn && isNative && notifyBlocked){
@@ -2478,7 +2725,7 @@ export function startApp(u, { logout }){
   if(isNative && st().settings.alertsOn) setTimeout(() => maybeAskNotify().then(refreshNotifyStatus).catch(() => {}), 1500);
   scheduleSync(400);
   loadUpdateInfo(); renderUpdate();
-  setTimeout(() => checkUpdates(true).catch(() => {}), 2500);
+  if(!isNative) setTimeout(() => checkUpdates(true).catch(() => {}), 2500);
   const day = localStorage.getItem('finly-due-toast');
   const a = computeAlerts().filter(x => x.d <= 1);
   if(a.length && day !== T){
@@ -2492,13 +2739,19 @@ export function startApp(u, { logout }){
   pushProfile(false);
   checkDevice(true);
   setTimeout(refreshShares, 1200);
+  // live: new requests, changes from other devices and device removal show up without reopening
+  let liveT = null;
+  const soon = fn => { clearTimeout(liveT); liveT = setTimeout(fn, 400); };
+  subscribeLive(user.id, { shares: () => soon(refreshShares), records: () => scheduleSync(600), devices: () => { devCheckAt = 0; checkDevice(true); } });
+  clearInterval(liveTimer);
+  liveTimer = setInterval(() => { if(document.hidden || !navigator.onLine) return; refreshShares(); checkUpdates(false).catch(() => {}); renderBell(); }, 60e3);
   schedulePlanNotice(st().settings.alertsOn);
   syncLauncherIcon();
-  setTimeout(() => { if(needsWhatsapp()) startCoach(); else maybeWhatsNew(); }, 1400);
+  setTimeout(() => { if(needsWhatsapp()) startCoach(); else { maybeWhatsNew(); setTimeout(() => maybeStartTour(), 900); setTimeout(maybeAskReliability, 1500); } }, 1400);
 }
 export function onResumeApp(){
   if(!store.uid) return;
   refreshToday(); render(); scheduleReminders(reminderPlan); scheduleSync(300); checkUpdates(false).catch(() => {}); refreshNotifyStatus();
-  checkDevice(false); refreshShares(); schedulePlanNotice(st().settings.alertsOn); drawCoach();
+  checkDevice(false); refreshShares(); schedulePlanNotice(st().settings.alertsOn); drawCoach(); drawReliability();
 }
 export { swatchesHTML };

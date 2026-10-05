@@ -3,7 +3,8 @@ import { $ } from './util.js';
 import { supabase, storedUser, loadStore, store, commitState, runSync, clearStore, signOut, setOnline } from './data.js';
 import { initToasts, initSheets, initNumeric, initInfo, initDateFields, toast, closeAllSheets } from './ui.js';
 import { initAuth, showAuth, showOnboarding, authBack, prefillSignin } from './auth.js';
-import { startApp, applySettings, handleBack, openItemFromNotification, onResumeApp, swatchesHTML } from './app.js';
+import { startApp, applySettings, handleBack, openItemFromNotification, onResumeApp, swatchesHTML, preflightUpdate } from './app.js';
+import { unsubscribeLive } from './cloud.js';
 import { isNative, watchNetwork, onResume, onBack, onNotificationTap, requestNotifyPermission, cancelAllReminders } from './native.js';
 import { permsNeeded, showPerms } from './perms.js';
 
@@ -53,6 +54,7 @@ async function logout(sessionExpired, reason){
     return;
   }
   loggingOut = true;
+  unsubscribeLive();
   const id = current?.id;
   await cancelAllReminders();
   await signOut();
@@ -63,6 +65,16 @@ async function logout(sessionExpired, reason){
   if(reason === 'revoked') toast({ type:'warning', title:'Signed out from another device', body:'This device was removed from your account, and its Finly data was cleared.', ms:8000 });
   else toast({ type:'success', title:'Logged out' });
 }
+
+/** Paint the loading screen in the last-used palette straight away. */
+function paintBootLogo(){
+  try{
+    const logo = localStorage.getItem('finly-logo'), bg = localStorage.getItem('finly-boot-bg');
+    if(logo) document.querySelectorAll('.brand-mark img').forEach(i => { i.src = logo; });
+    if(bg){ document.documentElement.style.background = bg; document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg); }
+  }catch{ /* private mode */ }
+}
+paintBootLogo();
 
 function boot(){
   initToasts(); initSheets(); initNumeric(); initInfo(); initDateFields();
@@ -79,6 +91,11 @@ function boot(){
   onBack(() => (appStarted ? handleBack() : authBack()));
   onNotificationTap(id => { if(appStarted) openItemFromNotification(id); else pendingNotif = id; });
 
+  // check for an update before opening, so it appears immediately (at most a 3 s wait on the splash)
+  const ready = isNative && navigator.onLine ? Promise.race([preflightUpdate(), sleep(3000)]) : Promise.resolve();
+  ready.then(openApp);
+}
+function openApp(){
   const u = storedUser();
   if(u) enter(u);
   else if(permsNeeded()){ hideBoot(); showPerms(showAuth).then(() => showAuth('welcome')); }
