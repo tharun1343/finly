@@ -35,14 +35,17 @@ export function initToasts(){ new ResizeObserver(layoutFab).observe(stack()); }
 export const openStack = [];
 export function footShadow(o){ const sc = $('.sheet-scroll', o), ft = $('.sheet-foot', o); if(sc && ft) ft.classList.toggle('raised', sc.scrollHeight - sc.scrollTop - sc.clientHeight > 4); }
 export function openSheet(id){
-  const o = $('#' + id); o.classList.add('show'); openStack.push(id); document.body.classList.add('sheet-open');
+  const o = $('#' + id);
+  // a sheet opened on top of another (e.g. picking a number inside the Ledger form) must sit above it
+  o.style.zIndex = String(80 + openStack.filter(x => x !== id).length * 2);
+  o.classList.add('show'); openStack.push(id); document.body.classList.add('sheet-open');
   const sc = $('.sheet-scroll', o); if(sc) sc.scrollTop = 0;
   requestAnimationFrame(() => footShadow(o));
 }
 export function closeSheet(id){
   closeDropdown(); hideInfo();
   id = id || openStack[openStack.length - 1]; if(!id) return;
-  const o = $('#' + id); o.classList.remove('show'); $('.sheet', o).style.transform = '';
+  const o = $('#' + id); o.classList.remove('show'); $('.sheet', o).style.transform = ''; $('.sheet', o).classList.remove('expanded');
   const i = openStack.lastIndexOf(id); if(i > -1) openStack.splice(i, 1);
   if(!openStack.length) document.body.classList.remove('sheet-open');
   document.activeElement?.blur?.();
@@ -56,8 +59,14 @@ export function initSheets(){
     const top = $('.sheet-top', o), sheet = $('.sheet', o);
     let y0 = 0, t0 = 0, dy = 0, dragging = false;
     top.addEventListener('pointerdown', e => { if(e.target.closest('button')) return; dragging = true; y0 = e.clientY; t0 = performance.now(); dy = 0; sheet.style.transition = 'none'; top.setPointerCapture(e.pointerId); });
-    top.addEventListener('pointermove', e => { if(!dragging) return; dy = Math.max(0, e.clientY - y0); sheet.style.transform = `translate(-50%, ${dy}px)`; });
+    const expandable = o.classList.contains('expandable');
+    top.addEventListener('pointermove', e => { if(!dragging) return;
+      const raw = e.clientY - y0;
+      if(expandable && raw < -40 && !sheet.classList.contains('expanded')){ sheet.classList.add('expanded'); sheet.style.transition = ''; }
+      dy = Math.max(0, raw); sheet.style.transform = `translate(-50%, ${dy}px)`; });
     const end = () => { if(!dragging) return; dragging = false; sheet.style.transition = ''; const v = dy / Math.max(1, performance.now() - t0);
+      // an expanded sheet first goes back to its normal height, then closes on the next drag down
+      if(expandable && sheet.classList.contains('expanded') && dy > 60){ sheet.classList.remove('expanded'); sheet.style.transform = ''; return; }
       if(dy > 110 || (dy > 30 && v > .6)) closeSheet(o.id); else sheet.style.transform = ''; };
     top.addEventListener('pointerup', end); top.addEventListener('pointercancel', end);
   });

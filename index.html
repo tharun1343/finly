@@ -20,7 +20,7 @@
 <div class="boot" id="boot"><div class="brand-mark"><img src="./favicon.svg" alt="Finly"></div></div>
 <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 <div class="info-pop" id="infoPop" role="tooltip"></div>
-<div class="coach hidden" id="coach" aria-live="polite"><div class="coach-hole" id="coachHole"></div><div class="coach-tip" id="coachTip"><div class="coach-arrow" id="coachArrow"></div><b id="coachTitle"></b><span id="coachText"></span></div></div>
+<div class="coach hidden" id="coach" aria-live="polite"><div class="coach-hole" id="coachHole"></div><div class="coach-tip" id="coachTip"><div class="coach-arrow" id="coachArrow"></div><b id="coachTitle"></b><span id="coachText"></span><div class="coach-foot hidden" id="coachFoot"><span class="coach-count" id="coachCount"></span><button type="button" class="link-btn" id="coachSkip">Skip</button><button type="button" class="btn btn-primary btn-sm" id="coachNext">Next</button></div></div></div>
 
 <div class="force-update hidden" id="forceUpdate" role="alertdialog" aria-labelledby="fuTitle">
   <div class="fu-card">
@@ -176,7 +176,8 @@
       <div class="hero-stats">
         <button class="mini-stat" id="incomeTile"><div class="ms-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--primary)"><path d="M12 19V5M5 12l7-7 7 7"/></svg>Income</div><div class="ms-value" id="msIncome">₹0</div></button>
         <button class="mini-stat ms-link" id="outflowTile" aria-label="See monthly outflow by category"><div class="ms-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--rose)"><path d="M12 5v14M5 12l7 7 7-7"/></svg>Outflow<svg class="ms-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m9 18 6-6-6-6"/></svg></div><div class="ms-value" id="msOut">₹0</div></button>
-        <div class="mini-stat"><div class="ms-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--gold)"><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2V5z"/></svg>Savings</div><div class="ms-value" id="msSave">₹0</div></div>
+        <div class="mini-stat" id="saveTile"><div class="ms-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--gold)"><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2V5z"/></svg>Savings</div><div class="ms-value" id="msSave">₹0</div></div>
+        <button class="mini-stat ms-link hidden" id="othersTile" aria-label="EMIs paid by others"><div class="ms-label"><img class="e3d" src="./e3d/1f465.webp" alt="" draggable="false" style="width:13px;height:13px">Paid by others<svg class="ms-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m9 18 6-6-6-6"/></svg></div><div class="ms-value" id="msOthers">₹0</div><div class="ms-foot" id="msOthersFoot"></div></button>
       </div>
     </div>
     <div class="chips" id="chips" aria-label="Filter by category"></div>
@@ -237,6 +238,7 @@
       <div class="wh-card save"><img class="e3d wh-ic" src="./e3d/1f4b0.webp" alt="" draggable="false"><div class="label-caps">Savings</div><div class="wh-value" id="whSave">₹0</div><div class="wh-foot" id="whSaveFoot">—</div></div>
       <div class="wh-card debt"><img class="e3d wh-ic" src="./e3d/1f4b8.webp" alt="" draggable="false"><div class="label-caps">Chit debt</div><div class="wh-value" id="whDebt">₹0</div><div class="wh-foot" id="whDebtFoot">—</div></div>
     </div>
+    <div class="segmented" id="chitFilter" style="margin-bottom:14px"><div class="seg-thumb"></div><button class="seg-btn sel" data-f="all">All <span class="seg-n" id="cfAll"></span></button><button class="seg-btn" data-f="save">Savings <span class="seg-n" id="cfSave"></span></button><button class="seg-btn" data-f="debt">Debt <span class="seg-n" id="cfDebt"></span></button></div>
     <div id="chitList"></div>
     <div class="section-head" id="closedHead"><div class="section-title">Closed <small id="closedCount"></small></div></div>
     <div class="closed-list" id="closedList"></div>
@@ -315,6 +317,10 @@
             <div class="setting-left"><img class="e3d set-ic" src="./e3d/23f0.webp" alt="" draggable="false"><div><div class="setting-label">Due-date reminders <span class="info-i" role="button" tabindex="0" data-info="Set when to remind per category above, or per entry when you add it. Default: 1 day before at 9 AM. Reminders never come after the due date. If they don't arrive, allow notifications for Finly and set Battery to Unrestricted in Android Settings → Apps → Finly." aria-label="More info">i</span></div><div class="setting-sub" id="alertsSub">Phone notification at 9 AM</div></div></div>
             <span class="switch on" id="alertsSwitch" role="switch" aria-checked="true"></span>
           </button>
+          <button class="setting-row" id="relRow">
+            <div class="setting-left"><img class="e3d set-ic" src="./e3d/1f50b.webp" alt="" draggable="false"><div><div class="setting-label">Reminder reliability</div><div class="setting-sub" id="relSub">Check that reminders can arrive on time</div></div></div>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
           <button class="setting-row" id="testNotifRow">
             <div class="setting-left"><img class="e3d set-ic" src="./e3d/1f514.webp" alt="" draggable="false"><div><div class="setting-label">Send a test notification</div><div class="setting-sub">Check that reminders reach this phone</div></div></div>
             <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg>
@@ -382,6 +388,14 @@
     </div>
     <div class="fgroup hidden" id="bSubG"><label for="bSub">Type <button type="button" class="info-i" data-info="What kind of EMI or bill this is — it sets the icon. Add or remove types in Profile → Categories." aria-label="More info">i</button></label><select id="bSub"></select></div>
     <div class="fgroup" id="bAmtG"><label for="bAmt" id="bAmtLabel">Amount per payment <span class="req">*</span></label><div class="money-wrap"><input id="bAmt" type="text" inputmode="decimal" data-money placeholder="5,000" autocomplete="off"></div><div class="ferr">Enter ₹1 – ₹10,00,00,000.</div></div>
+    <div class="switch-row" id="bOthersRow"><div><div class="sr-label">Paid by someone else</div><div class="sr-sub">On your name or account, but another person pays it</div></div><span class="switch" id="bOthers" role="switch" aria-checked="false"></span></div>
+    <div class="hidden" id="bOthersFields">
+      <div class="fgroup" id="bPayerG"><label for="bPayer">Who pays it <span class="req">*</span></label>
+        <div class="name-row"><input id="bPayer" maxlength="40" placeholder="e.g. Ravi" autocomplete="off"><button type="button" class="contact-btn" id="bPayerPick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="10" cy="8" r="4"/><path d="M3 21c1.2-4 4-5.5 7-5.5 1.6 0 3.1.4 4.3 1.3M19 14v6M16 17h6"/></svg>Choose contact</button></div>
+        <div class="ferr">Enter who pays it.</div></div>
+      <div class="fgroup" id="bPayerPhoneG"><label for="bPayerPhone">Their mobile / WhatsApp</label><input id="bPayerPhone" type="tel" inputmode="tel" maxlength="16" placeholder="Optional — to call or send reminders" autocomplete="off"><div class="ferr">Enter a valid number (10 digits, or with country code).</div>
+        <div class="fhint">Not counted in your own debt or monthly outflow.</div></div>
+    </div>
     <div class="switch-row" id="bOngoingRow"><div><div class="sr-label">Ongoing — no end date</div><div class="sr-sub">For recharges, insurance and bills that keep repeating</div></div><span class="switch" id="bOngoing" role="switch" aria-checked="false"></span></div>
     <div class="frow" id="bTenureRow">
       <div class="fgroup" id="bTenG"><label for="bTen" id="bTenLabel">Total payments <span class="req">*</span></label><input id="bTen" type="text" inputmode="numeric" data-int placeholder="36" autocomplete="off"><div class="ferr" id="bTenErr">Enter 1 – 600.</div></div>
@@ -589,6 +603,15 @@
   <div class="sheet-foot"><button class="btn btn-danger hidden" id="bkDelete">Delete</button><button class="btn btn-primary btn-grow" id="bkSave">Add bank account</button></div>
 </div></div>
 
+<div class="sheet-overlay" id="reliableSheet"><div class="sheet">
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title">Get reminders on time</div><div class="sheet-sub">Android can delay or block reminders while Finly is closed. Fix these once:</div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-scroll">
+    <div class="perm-list" id="relList"></div>
+    <div class="info-strip" id="relTip"></div>
+  </div>
+  <div class="sheet-foot"><button class="btn btn-secondary" data-close>Later</button><button class="btn btn-primary btn-grow" id="relTest">Send a test reminder</button></div>
+</div></div>
+
 <div class="sheet-overlay" id="updSheet"><div class="sheet">
   <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="upTitle">Updating Finly</div><div class="sheet-sub" id="upSub"></div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
   <div class="sheet-scroll no-foot">
@@ -619,7 +642,15 @@
   <div class="sheet-foot"><button class="btn btn-secondary" id="plSave">Save</button><button class="btn btn-wa btn-grow" id="plShare">Share to WhatsApp</button></div>
 </div></div>
 
-<div class="sheet-overlay" id="outflowSheet"><div class="sheet">
+<div class="sheet-overlay" id="emiRemSheet"><div class="sheet">
+  <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title" id="erTitle">EMI reminder</div><div class="sheet-sub" id="erSub"></div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
+  <div class="sheet-scroll">
+    <div class="plan-img-wrap"><div class="plan-skel" id="erSkel"></div><img id="erImg" class="hidden" alt="EMI reminder"></div>
+  </div>
+  <div class="sheet-foot"><button class="btn btn-secondary" id="erSave">Save</button><button class="btn btn-wa btn-grow" id="erShare">Share to WhatsApp</button></div>
+</div></div>
+
+<div class="sheet-overlay expandable" id="outflowSheet"><div class="sheet">
   <div class="sheet-top"><div class="sheet-handle"></div><div class="sheet-head"><div><div class="sheet-title">Monthly outflow</div><div class="sheet-sub" id="ofSub"></div></div><button class="sheet-x" data-close aria-label="Close"></button></div></div>
   <div class="sheet-scroll no-foot">
     <div class="of-tabs" id="ofTabs" role="tablist"></div>

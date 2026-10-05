@@ -83,3 +83,19 @@ export const shareUpsert = (id, phone, ownerName, data) => rpc('share_upsert', {
 export const shareRespond = (id, accept) => rpc('share_respond', { p_id:id, p_accept:accept });
 export const shareAddPayment = (id, payment) => rpc('share_add_payment', { p_id:id, p_payment:payment });
 export const shareRemove = id => rpc('share_remove', { p_id:id });
+
+/* ---------- live updates: requests, data from other devices and device removal arrive instantly ---------- */
+let liveChannel = null;
+/** handlers: { shares(), records(), devices() }. Needs supabase/v2-4-realtime.sql; silently does nothing without it. */
+export function subscribeLive(userId, handlers){
+  unsubscribeLive();
+  if(!userId || typeof supabase.channel !== 'function') return;
+  try{
+    liveChannel = supabase.channel('finly-live-' + userId)
+      .on('postgres_changes', { event:'*', schema:'public', table:'ledger_shares' }, () => handlers.shares())
+      .on('postgres_changes', { event:'*', schema:'public', table:'records', filter:`user_id=eq.${userId}` }, () => handlers.records())
+      .on('postgres_changes', { event:'*', schema:'public', table:'devices', filter:`user_id=eq.${userId}` }, () => handlers.devices())
+      .subscribe();
+  }catch(e){ console.warn('Live updates unavailable', e); }
+}
+export function unsubscribeLive(){ if(liveChannel){ try{ supabase.removeChannel(liveChannel); }catch{ /* ignore */ } liveChannel = null; } }

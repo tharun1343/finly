@@ -20,6 +20,12 @@
             android:exported="true">
         </activity>
 
+        <!-- In-app updates: install result, and reopening after Finly updates itself -->
+        <receiver android:name=".InstallResultReceiver" android:exported="false" />
+        <receiver android:name=".UpdatedReceiver" android:exported="false">
+            <intent-filter><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter>
+        </receiver>
+
         <!-- One launcher entry per colour palette; the app enables the one matching the chosen palette. -->
         <activity-alias
             android:name=".Icon_sapphire"
@@ -182,8 +188,12 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- In-app updates: download the new APK and hand it to the Android installer. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Android 12+: Finly can install its own updates without the extra confirm screen -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <!-- Ledger: choose a person from contacts (name + numbers). -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- Android 9 and older only: save monthly plan / reminder images to the gallery -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <!-- Ask to be exempt from battery optimisation so reminders arrive while the app is closed. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 </manifest>
