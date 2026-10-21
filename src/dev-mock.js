@@ -36,10 +36,14 @@ export function createMockClient(authKey){
   db.devices ||= []; db.profiles ||= []; db.shares ||= [];
   const me = () => session()?.user?.id;
   const ok = data => ({ data, error:null });
+  // Postgres jsonb does not keep key order: mimic that, so the app can't rely on it
+  const jsonb = v => Array.isArray(v) ? v.map(jsonb) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort((a, b) => a.length - b.length || (a < b ? -1 : 1)).map(k => [k, jsonb(v[k])])) : v;
+  window.__devRpcCount = window.__devRpcCount || {};
   async function rpc(name, a){
     await sleep(100);
     const u = me(); if(!u) return { data:null, error:{ message:'not signed in' } };
     let out = null;
+    window.__devRpcCount[name] = (window.__devRpcCount[name] || 0) + 1;
     if(name === 'register_device'){
       let d = db.devices.find(x => x.user_id === u && x.id === a.p_id);
       if(d?.revoked) return ok({ revoked:true });
@@ -57,14 +61,27 @@ export function createMockClient(authKey){
       const cp = db.profiles.find(x => x.phone === a.p_phone && x.user_id !== u)?.user_id || null, mine = db.profiles.find(x => x.user_id === u)?.phone || '';
       let r = db.shares.find(x => x.id === a.p_id);
       if(r && r.owner !== u) return { data:null, error:{ message:'not yours' } };
-      if(!r){ r = { id:a.p_id, owner:u, status:'pending', created_at:new Date().toISOString() }; db.shares.push(r); }
-      else if(r.counterpart_phone !== a.p_phone || r.status === 'removed') r.status = 'pending';
-      Object.assign(r, { owner_name:a.p_owner_name, owner_phone:mine, counterpart:cp, counterpart_phone:a.p_phone, data:a.p_data, updated_at:new Date().toISOString() });
+      const data = jsonb(a.p_data);
+      if(!r){ r = { id:a.p_id, owner:u, status:'pending', created_at:new Date().toISOString(), owner_hidden:false, counterpart_hidden:false }; db.shares.push(r); }
+      else {
+        if(r.counterpart_phone !== a.p_phone){ r.status = 'pending'; r.counterpart_hidden = false; } else if(r.status === 'removed') r.status = 'pending';
+        const old = r.data?.payments || [];
+        data.payments = old.concat((data.payments || []).filter(n => !old.some(o => o.id === n.id)));
+      }
+      Object.assign(r, { owner_name:a.p_owner_name, owner_phone:mine, counterpart:cp, counterpart_phone:a.p_phone, data, owner_hidden:false, updated_at:new Date().toISOString() });
       out = cp ? 'linked' : 'waiting';
     } else if(name === 'share_respond'){ const r = db.shares.find(x => x.id === a.p_id && x.counterpart === u); if(r) r.status = a.p_accept ? 'accepted' : 'declined'; }
     else if(name === 'share_add_payment'){
       const r = db.shares.find(x => x.id === a.p_id && (x.owner === u || (x.counterpart === u && x.status === 'accepted')));
-      if(r && !(r.data.payments || []).some(p => p.id === a.p_payment.id)) r.data.payments = [...(r.data.payments || []), a.p_payment];
+      if(r && !(r.data.payments || []).some(p => p.id === a.p_payment.id)) r.data.payments = [...(r.data.payments || []), jsonb(a.p_payment)];
+    } else if(name === 'share_confirm'){
+      const r = db.shares.find(x => x.id === a.p_id && (x.owner === u || (x.counterpart === u && x.status === 'accepted')));
+      if(!r) return { data:null, error:{ message:'not found' } };
+      for(const p of r.data.payments || []) if(p.id === a.p_pay_id && p.by !== u && p.st === 'pending') p.st = a.p_ok ? 'ok' : 'no';
+    } else if(name === 'share_hide'){
+      const r = db.shares.find(x => x.id === a.p_id && (x.owner === u || x.counterpart === u));
+      if(r){ if(r.owner === u) r.owner_hidden = true; if(r.counterpart === u) r.counterpart_hidden = true;
+        if(r.owner_hidden && (r.counterpart_hidden || !r.counterpart || r.status !== 'accepted')) db.shares = db.shares.filter(x => x !== r); }
     } else if(name === 'share_remove'){ const r = db.shares.find(x => x.id === a.p_id && x.owner === u); if(r) r.status = 'removed'; }
     else return { data:null, error:{ code:'PGRST202', message:'Could not find the function' } };
     persist();

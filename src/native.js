@@ -57,89 +57,91 @@ export async function requestNotifyPermission(){
 }
 export function onNotificationTap(cb){
   if(!isNative) return;
-  LocalNotifications.addListener('localNotificationActionPerformed', a => { const x = a.notification?.extra || {}; cb(x.plan ? '__plan:' + x.plan : x.itemId); });
+  const target = x => (x?.plan ? '__plan:' + x.plan : x?.item || x?.itemId);
+  LocalNotifications.addListener('localNotificationActionPerformed', a => cb(target(a.notification?.extra || {})));
+  // Finly's own reminders (ReminderReceiver): taps while running, and the tap that started the app
+  System.addListener('reminderTap', e => { const t = target(e); if(t) cb(t); }).catch(() => {});
+  System.takeLaunchTarget().then(e => { const t = target(e); if(t) cb(t); }).catch(() => {});
 }
 
 /** Exact alarms fire on time even in battery saver; Finly declares USE_EXACT_ALARM so Android grants them. */
 async function exactAllowed(){
   try{ return (await LocalNotifications.checkExactNotificationSetting()).exact_alarm === 'granted'; }catch{ return false; }
 }
-/** Reminder slots already handed to Android, so a missed 9 AM slot is only made up once. */
-const SLOT_KEY = 'finly-reminder-slots';
-function loadSlots(){ try{ return JSON.parse(localStorage.getItem(SLOT_KEY) || '{}'); }catch{ return {}; } }
-function saveSlots(m){
-  const cutoff = Date.now() - 40 * 86400000;
-  for(const k of Object.keys(m)) if(m[k] < cutoff) delete m[k];
-  try{ localStorage.setItem(SLOT_KEY, JSON.stringify(m)); }catch{ /* storage full */ }
-}
-/** Shows a notification a few seconds from now, to check that reminders reach this phone. */
-export async function testNotification(){
+
+/*
+ * Reminders go to Finly's own alarm engine (android/.../ReminderReceiver.java): exact alarms that fire with the
+ * app closed, armed again after a reboot or update, plus a watchdog every few hours that still shows a reminder
+ * whose alarm the phone dropped.
+ */
+const DAY = 86400000;
+const atNine = (iso, back) => { const d = parseISO(iso); d.setDate(d.getDate() - back); d.setHours(9, 0, 0, 0); return d.getTime(); };
+const dayEnd = iso => { const d = parseISO(iso); d.setHours(23, 59, 0, 0); return d.getTime(); };
+/** Sends a reminder through the same alarm path as real ones, so it proves they reach this phone with Finly closed. */
+export async function testNotification(delay = 20000){
   if(!isNative) return 'unavailable';
   let p = await notifyPermission();
   if(p !== 'granted') p = await requestNotifyPermission();
   if(p !== 'granted') return 'denied';
   await ensureChannel();
-  await LocalNotifications.schedule({ notifications:[{ id:900002, channelId:CHANNEL, title:'Finly reminders are working', body:'You\'ll get reminders like this before your due dates.',
-    schedule:{ at:new Date(Date.now() + 5000), allowWhileIdle:true }, isExactNotification: await exactAllowed(), smallIcon:'ic_stat_finly' }] });
+  try{ await System.testReminder({ delay }); }
+  catch{ // older native helper
+    await LocalNotifications.schedule({ notifications:[{ id:900002, channelId:CHANNEL, title:'Finly reminders are working', body:'You\'ll get reminders like this before your due dates.',
+      schedule:{ at:new Date(Date.now() + 5000), allowWhileIdle:true }, isExactNotification: await exactAllowed(), smallIcon:'ic_stat_finly' }] });
+  }
   return 'sent';
 }
 
 /* ---------- monthly plan: 9 PM on the last day of each month ---------- */
-const PLAN_NOTIF_ID = 900003;
 export async function schedulePlanNotice(enabled){
   if(!isNative) return;
   try{
-    await LocalNotifications.cancel({ notifications:[{ id:PLAN_NOTIF_ID }] });
-    if(!enabled || (await notifyPermission()) !== 'granted') return;
-    await ensureChannel();
-    const now = new Date();
-    let at = new Date(now.getFullYear(), now.getMonth() + 1, 0, 21, 0, 0);          // last day of this month, 9 PM
-    if(at.getTime() <= now.getTime() + 60000) at = new Date(now.getFullYear(), now.getMonth() + 2, 0, 21, 0, 0);
-    const next = new Date(at.getFullYear(), at.getMonth() + 1, 1);
-    const key = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
-    const month = next.toLocaleDateString('en-IN', { month:'long' });
-    await LocalNotifications.schedule({ notifications:[{ id:PLAN_NOTIF_ID, channelId:CHANNEL, title:`Your ${month} plan is ready`,
-      body:'Tap to see what\'s due next month and share it on WhatsApp.', schedule:{ at, allowWhileIdle:true }, isExactNotification: await exactAllowed(),
-      smallIcon:'ic_stat_finly', extra:{ plan:key } }] });
+    const list = [], now = new Date();
+    if(enabled && (await notifyPermission()) === 'granted'){
+      for(let k = 0; k < 2; k++){   // this month's and next month's, so one missed open never skips a month
+        const at = new Date(now.getFullYear(), now.getMonth() + 1 + k, 0, 21, 0, 0);
+        const next = new Date(at.getFullYear(), at.getMonth() + 1, 1);
+        const key = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
+        list.push({ key:'plan|' + key, at:at.getTime(), until:at.getTime() + 3 * 3600000, nid:903 + k, plan:key, item:'',
+          title:`Your ${next.toLocaleDateString('en-IN', { month:'long' })} plan is ready`, body:'Tap to see what\'s due next month and share it on WhatsApp.' });
+      }
+      await ensureChannel();
+    }
+    await System.setReminders({ group:'plan', list });
   }catch(e){ console.warn('Plan reminder failed', e); }
 }
 
 let schedTimer = null;
-/** Rebuild every pending reminder from the current data (cheap: ≤ 64 alarms). */
+/** Rebuild every reminder slot from the current data. */
 export function scheduleReminders(build){ clearTimeout(schedTimer); schedTimer = setTimeout(() => doSchedule(build).catch(e => console.warn('Reminder scheduling failed', e)), 800); }
+let migrated = false;
 async function doSchedule(build){
   if(!isNative) return;
-  const pending = (await LocalNotifications.getPending()).notifications.filter(n => n.id !== UPDATE_NOTIF_ID && n.id !== 900002 && n.id !== PLAN_NOTIF_ID);
-  if(pending.length) await LocalNotifications.cancel({ notifications: pending.map(n => ({ id:n.id })) });
-  const { enabled, entries } = build();
-  if(!enabled || (await notifyPermission()) !== 'granted') return;
-  await ensureChannel();
-  const exact = await exactAllowed(), slots = loadSlots();
-  const now = Date.now(), list = [], today = new Date(); today.setHours(0, 0, 0, 0);
-  let id = 1;
-  for(const e of entries){
-    const dueEnd = parseISO(e.due); dueEnd.setHours(23, 59, 0, 0);
-    if(dueEnd.getTime() < now) continue;   // never remind after the due date
-    for(const off of e.offsets){
-      let at = parseISO(e.due); at.setDate(at.getDate() - off); at.setHours(9, 0, 0, 0);
-      const key = `${e.id}|${e.due}|${off}`;
-      if(at.getTime() <= now + 60000){
-        // Today's 9 AM slot already passed and was never scheduled (e.g. added after 9 AM): remind shortly instead.
-        const slotDay = new Date(at); slotDay.setHours(0, 0, 0, 0);
-        if(slotDay.getTime() !== today.getTime() || slots[key]) continue;
-        at = new Date(now + 90000);
-      }
-      if(at.getTime() - now > 120 * 86400000) continue;
-      slots[key] = at.getTime();
-      const when = off === 0 ? 'today' : off === 1 ? 'tomorrow' : `in ${off} days`;
-      list.push({ id: id++, channelId:CHANNEL, title: e.chit ? `${e.name} · round ${e.round} ${when}` : `${e.name} due ${when}`,
-        body: `${fmtMoney(e.amount)} due on ${fmtShort(e.due)}. ${e.chit ? 'Tap to record the round.' : e.lend ? 'Tap to record the payment.' : 'Tap to mark it paid.'}`,
-        schedule:{ at, allowWhileIdle:true }, isExactNotification:exact, extra:{ itemId:e.id }, smallIcon:'ic_stat_finly' });
-    }
+  if(!migrated){
+    // before 2.2 reminders were Capacitor notifications: clear those so nothing shows twice
+    migrated = true;
+    try{ const p = (await LocalNotifications.getPending()).notifications.filter(n => n.id !== UPDATE_NOTIF_ID);
+      if(p.length) await LocalNotifications.cancel({ notifications: p.map(n => ({ id:n.id })) }); }catch{ /* ignore */ }
   }
-  saveSlots(slots);
-  list.sort((a, b) => a.schedule.at - b.schedule.at);
-  if(list.length) await LocalNotifications.schedule({ notifications: list.slice(0, 64) });
+  const { enabled, entries } = build();
+  const list = [], now = Date.now();
+  if(enabled && (await notifyPermission()) === 'granted'){
+    let nid = 1;
+    for(const e of entries){
+      const until = dayEnd(e.due);
+      if(until < now) continue;   // never remind after the due date
+      const tag = nid++;
+      for(const off of e.offsets){
+        const at = atNine(e.due, off);
+        if(at < now - 3 * DAY || at - now > 120 * DAY) continue;   // recent missed slots stay in: the engine shows the latest once
+        list.push({ key:`${e.id}|${e.due}|${off}`, at, until, due:parseISO(e.due).getTime(), nid:tag, item:e.id, plan:'',
+          title: e.chit ? `${e.name} · round ${e.round} {when}` : `${e.name} due {when}`,
+          body: `${fmtMoney(e.amount)} due on ${fmtShort(e.due)}. ${e.chit ? 'Tap to record the round.' : e.lend ? 'Tap to record the payment.' : 'Tap to mark it paid.'}` });
+      }
+    }
+    await ensureChannel();
+  }
+  await System.setReminders({ group:'reminders', list });
 }
 /* ---------- update notifications ---------- */
 // Same id and channel as the background check (public/runners/updates.js), so one version never shows twice.
@@ -162,6 +164,7 @@ export async function notifyUpdate(version){
 export async function cancelAllReminders(){
   if(!isNative) return;
   try{ const p = await LocalNotifications.getPending(); if(p.notifications.length) await LocalNotifications.cancel({ notifications: p.notifications.map(n => ({ id:n.id })) }); }catch{ /* ignore */ }
+  for(const group of ['reminders', 'plan']) await System.setReminders({ group, list:[] }).catch(() => {});
 }
 
 /* ---------- saving exported files ---------- */
