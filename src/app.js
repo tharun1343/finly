@@ -8,8 +8,8 @@ import { isNative, APP_VERSION, APK_URL, setBarsStyle, scheduleReminders, notify
   canInstallUpdates, allowInstallUpdates, downloadAndInstall, pickContact, setLauncherIcon, schedulePlanNotice, saveToGallery,
   reliabilityStatus, askBatteryUnrestricted, openAppSettings, openNotificationSettings } from './native.js';
 import { paymentRows, summaryRow, buildCsv, buildPdf } from './export.js';
-import { lendState, lendDue, splitPayment, rateLabel } from './ledger.js';
-import { registerDevice, listDevices, revokeDevice, forgetDevice, deviceId, normPhone, fmtPhone, PHONE_RE, saveProfile as saveRemoteProfile, fetchShares, shareUpsert, shareRespond, shareAddPayment, shareRemove, subscribeLive } from './cloud.js';
+import { lendState, lendDue, splitPayment, rateLabel, setLedgerViewer, payCounts, payToConfirm } from './ledger.js';
+import { registerDevice, listDevices, revokeDevice, forgetDevice, deviceId, normPhone, fmtPhone, PHONE_RE, saveProfile as saveRemoteProfile, fetchShares, shareUpsert, shareRespond, shareAddPayment, shareRemove, shareConfirm, shareHide, subscribeLive } from './cloud.js';
 import { logoColors, logoSVG } from './logo.js';
 import { BANK_GROUPS, OTHER_BANK, findBank, bankFromIfsc, shortName, IFSC_RE, maskAcct, bankBadgeHTML, bankColor, lookupIfsc } from './banks.js';
 import { PIN_RE, lookupPin, ageFrom } from './places.js';
@@ -138,6 +138,8 @@ function countTo(el, key, to){
   const step = t => { const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3); el.textContent = fmtMoney(Math.round(from + (to - from) * e)); if(p < 1) requestAnimationFrame(step); };
   requestAnimationFrame(step);
 }
+/** Replaces a list's HTML only when it really changed, so background refreshes never make it blink. */
+function setHTML(el, html){ if(!el || el._html === html) return false; el._html = html; el.innerHTML = html; return true; }
 function enterCls(id){ if(seen.has(id)) return ''; seen.add(id); return 'enter'; }
 function barHTML(id, pct, color){ const from = prevPct[id] ?? 0; prevPct[id] = pct; return `<div class="track"><div class="bar" data-pct="${pct}" style="width:${from}%${color ? ';background:' + color : ''}"></div></div>`; }
 function flushBars(){
@@ -238,16 +240,16 @@ function renderHome(){
   const act = activeItems(), counts = {};
   act.forEach(i => counts[i.catId] = (counts[i.catId] || 0) + 1);
   if(filter === 'others' ? !t.othersCount : filter !== 'all' && !counts[filter]) filter = 'all';
-  $('#chips').innerHTML = act.length ? `<button class="chip ${filter === 'all' ? 'active' : ''}" data-f="all">All <span class="n">${act.length}</span></button>` +
+  setHTML($('#chips'), act.length ? `<button class="chip ${filter === 'all' ? 'active' : ''}" data-f="all">All <span class="n">${act.length}</span></button>` +
     st().cats.filter(c => counts[c.id]).map(c => `<button class="chip ${filter === c.id ? 'active' : ''}" data-f="${c.id}">${c.emoji ? e3d(c.emoji, 'chip-3d') : ''}${esc(c.name)} <span class="n">${counts[c.id]}</span></button>`).join('')
-    + (t.othersCount ? `<button class="chip ${filter === 'others' ? 'active' : ''}" data-f="others">${e3d('👥', 'chip-3d')}Paid by others <span class="n">${t.othersCount}</span></button>` : '') : '';
+    + (t.othersCount ? `<button class="chip ${filter === 'others' ? 'active' : ''}" data-f="others">${e3d('👥', 'chip-3d')}Paid by others <span class="n">${t.othersCount}</span></button>` : '') : '');
   const list = act.filter(i => filter === 'all' || (filter === 'others' ? paidByOther(i) : i.catId === filter));
   list.sort(sortMode === 'due' ? (a, b) => dayNum(nextDue(a)) - dayNum(nextDue(b)) : (a, b) => (b.kind === 'chit' ? b.installment : b.amount) - (a.kind === 'chit' ? a.installment : a.amount));
   $('#activeCount').textContent = list.length ? `(${list.length})` : '';
   $('#sortBtn').classList.toggle('hidden', list.length < 2);
-  $('#cardList').innerHTML = list.length ? list.map((it, i) => it.kind === 'chit' ? chitCompact(it, i) : billCard(it, i)).join('')
+  setHTML($('#cardList'), list.length ? list.map((it, i) => it.kind === 'chit' ? chitCompact(it, i) : billCard(it, i)).join('')
     : firstLoad() ? skel.cards(2) : `<div class="empty"><div class="em">${e3d('🗂️')}</div><b>Nothing tracked yet</b>Add your EMIs, bills and chit funds to see what's due and when you'll be debt-free.
-       <div class="empty-actions"><button class="btn btn-primary btn-sm" data-empty="bill">Add EMI or bill</button><button class="btn btn-secondary btn-sm" data-empty="chit">Add chit fund</button></div></div>`;
+       <div class="empty-actions"><button class="btn btn-primary btn-sm" data-empty="bill">Add EMI or bill</button><button class="btn btn-secondary btn-sm" data-empty="chit">Add chit fund</button></div></div>`);
 }
 
 function renderStats(){
@@ -338,16 +340,16 @@ function renderWallet(){
   const all = activeItems().filter(i => i.kind === 'chit'), saving = all.filter(i => !i.taken), debt = all.filter(i => i.taken);
   $('#cfAll').textContent = all.length || ''; $('#cfSave').textContent = saving.length || ''; $('#cfDebt').textContent = debt.length || '';
   const chits = chitFilter === 'save' ? saving : chitFilter === 'debt' ? debt : all;
-  $('#chitList').innerHTML = chits.length ? chits.map(chitDetail).join('') : firstLoad() ? skel.cards(1)
+  setHTML($('#chitList'), chits.length ? chits.map(chitDetail).join('') : firstLoad() ? skel.cards(1)
     : all.length ? `<div class="empty"><div class="em">${e3d(chitFilter === 'debt' ? '🎉' : '🤝')}</div><b>${chitFilter === 'debt' ? 'No chits taken yet' : 'No chits in savings'}</b>${chitFilter === 'debt' ? 'Chits move here once you take the pot.' : 'Every active chit has been taken.'}</div>`
-    : `<div class="empty"><div class="em">${e3d('🤝')}</div><b>No active chit funds</b>Tap + to add one.</div>`;
+    : `<div class="empty"><div class="em">${e3d('🤝')}</div><b>No active chit funds</b>Tap + to add one.</div>`);
   const cl = closedItems();
   $('#closedCount').textContent = cl.length ? `(${cl.length})` : '';
-  $('#closedList').innerHTML = cl.length ? cl.map(it => { const c = cat(it.catId);
+  setHTML($('#closedList'), cl.length ? cl.map(it => { const c = cat(it.catId);
     const sub = it.kind === 'chit' ? `${it.members} rounds${it.taken ? ' · received ' + fmtMoney(it.taken.received) : ''}` : `${it.tenureTotal} months`;
     return `<div class="closed-row" data-id="${it.id}" style="--accent:${catColor(c)}"><div class="glyph">${glyphHTML(c, it)}</div><div style="min-width:0"><div class="cr-name">${esc(it.name)}</div><div class="cr-sub">Closed ${fmtDate(it.closedOn)} · ${sub}</div></div><div class="cr-amt"><span>Paid</span>${fmtMoney(itemPaid(it))}</div>
       ${it.kind === 'chit' ? `<button class="mini-btn" data-act="hist" aria-label="View all rounds of ${esc(it.name)}">${ICON.history}</button>` : ''}<button class="mini-btn" data-export="${it.id}" aria-label="Export ${esc(it.name)}">${ICON.export}</button></div>`; }).join('')
-    : '<div class="empty" style="padding:22px">Completed EMIs and chits move here automatically.</div>';
+    : '<div class="empty" style="padding:22px">Completed EMIs and chits move here automatically.</div>');
 }
 
 function swatchesHTML(selected){
@@ -737,7 +739,7 @@ function chitSummary(){
   const fake = { start:s, interval:iv, ...anchor }, end = roundDate(fake, m), coll = (inst || 0) * m;
   let html = `<b>${m} rounds</b> · every ${iv === 1 ? 'month' : iv + ' months'}<br>${fmtDate(s)} → <b>${fmtDate(end)}</b>`;
   if(inst > 0) html += `<br>${fmtMoney(inst)} × ${m} people = <b>${fmtMoney(coll)}</b> ` + (Math.abs(coll - p) < 1 ? '✓ matches the chit value' : `<span class="warn">— doesn't match ${fmtMoney(p)}</span>`);
-  if(isOn('cAgentFirst')) html += '<br>Round 1 goes to the agent (no auction).';
+  if(isOn('cAgentFirst')) html += `<br>Round ${formAgentR()} goes to the agent (no auction).`;
   if(isOn('cProg') && !editingChit){ const d = num($('#cDone').value); if(isInt(d) && d >= 0 && d < m){
     const nd = roundDate(fake, d + 1);
     html += `<br>Next: <b>round ${d + 1}</b> around <b>${fmtDate(nd)}</b>${lastDate ? ` — ${iv === 1 ? 'a month' : iv + ' months'} after round ${d}` : ''}. You can change it once it's announced.`; } }
@@ -747,7 +749,15 @@ function chitSummary(){
 /* ---------- past auctions, one row each ---------- */
 let roundRows = [];
 const MAX_PAST = 100;
-function rowKind(r, agentFirst, takenR){ if(agentFirst && r === 1) return 'agent'; if(takenR && r === takenR) return 'taken'; if(takenR && r > takenR) return 'full'; return 'auction'; }
+/** The round the agent takes without an auction (0 = none). Older chits were always round 1. */
+const agentRound = it => it.agentFirst ? (it.agentRound || 1) : 0;
+function formAgentR(){ if(!isOn('cAgentFirst')) return 0; const v = num($('#cAgentR').value); return isInt(v) && v >= 1 ? v : 1; }
+function drawAgentRow(){
+  const on = isOn('cAgentFirst'), r = formAgentR();
+  $('#cAgentRG').classList.toggle('hidden', !on);
+  $('#cAgentSub').textContent = on ? `No auction in round ${r} — everyone pays in full` : 'Every round is auctioned';
+}
+function rowKind(r, agentR, takenR){ if(agentR && r === agentR) return 'agent'; if(takenR && r === takenR) return 'taken'; if(takenR && r > takenR) return 'full'; return 'auction'; }
 function readRounds(){
   $$('#cRounds .round-row').forEach(row => {
     const o = roundRows[+row.dataset.r - 1] ||= {};
@@ -760,7 +770,7 @@ function readRounds(){
 function roundsMeta(){
   const n = num($('#cDone').value || 0), m = num($('#cMem').value), takenR = isOn('cTaken') ? num($('#cTakenR').value) : NaN;
   return { count: isInt(n) && n > 0 ? Math.min(n, isInt(m) && m > 1 ? m - 1 : MAX_PAST, MAX_PAST) : 0, I: num($('#cInst').value),
-    s: $('#cStart').value, iv: num($('#cInt').value) || 1, af: isOn('cAgentFirst'), takenR: isInt(takenR) ? takenR : null };
+    s: $('#cStart').value, iv: num($('#cInt').value) || 1, af: formAgentR(), takenR: isInt(takenR) ? takenR : null };
 }
 function drawRounds(){
   const box = $('#cRounds');
@@ -826,7 +836,8 @@ function openChitSheet(it){
   setSelect('cInt', it ? String(it.interval) : '1');
   $('#cStart').value = it ? it.start : T;
   setNum('cAgComm', it && it.agentCut ? it.agentCut : '');
-  setSwitch('cAgentFirst', it ? it.agentFirst : true);
+  setSwitch('cAgentFirst', it ? it.agentFirst : true); setNum('cAgentR', it ? (it.agentRound || 1) : 1);
+  $('#cAgentR').disabled = locked; drawAgentRow();
   ['cPot', 'cMem', 'cInst', 'cInt', 'cStart'].forEach(id => $('#' + id).disabled = locked);
   $('#cInt')._dd.sync();
   if(locked) $('#cAgentFirst').dataset.locked = '1'; else delete $('#cAgentFirst').dataset.locked;
@@ -848,7 +859,7 @@ function openChitSheet(it){
 async function saveChit(){
   clearForm('chitSheet');
   const name = $('#cName').value.trim(), agent = $('#cAgent').value.trim(), pot = num($('#cPot').value), m = num($('#cMem').value);
-  const inst = num($('#cInst').value), iv = num($('#cInt').value), s = $('#cStart').value, agCut = num($('#cAgComm').value || 0), agentFirst = isOn('cAgentFirst');
+  const inst = num($('#cInst').value), iv = num($('#cInt').value), s = $('#cStart').value, agCut = num($('#cAgComm').value || 0), agentFirst = isOn('cAgentFirst'), agentR = formAgentR();
   let bad = 0;
   bad += setInvalid('cNameG', !name);
   bad += setInvalid('cPotG', !(pot >= 1 && pot <= 1e9));
@@ -856,6 +867,8 @@ async function saveChit(){
   bad += setInvalid('cInstG', !(inst >= 1 && inst <= 1e9));
   bad += setInvalid('cStartG', !s);
   bad += setInvalid('cAgCommG', !(agCut >= 0 && (!(pot > 0) || agCut < pot)));
+  if(agentFirst && !(editingChit && editingChit.history.length)){ const v = num($('#cAgentR').value);
+    bad += setInvalid('cAgentRG', !(isInt(v) && v >= 1 && (!isInt(m) || v <= m)), 'cAgentRErr', `Pick a round from 1 to ${isInt(m) && m >= 2 ? m : 'the no. of people'}.`); }
   let past = null;
   if(!editingChit && isOn('cProg')){
     const done = num($('#cDone').value || 0);
@@ -863,8 +876,8 @@ async function saveChit(){
     let taken = null;
     readRounds();
     if(isOn('cTaken')){
-      const tr = num($('#cTakenR').value), minR = agentFirst ? 2 : 1, okR = isInt(tr) && tr >= minR && isInt(done) && tr <= done;
-      bad += setInvalid('cTakenRG', !okR, 'cTakenRErr', done >= minR ? `Pick round ${minR} – ${done}.` : `Complete at least round ${minR} first.`);
+      const tr = num($('#cTakenR').value), okR = isInt(tr) && tr >= 1 && isInt(done) && tr <= done && tr !== agentR;
+      bad += setInvalid('cTakenRG', !okR, 'cTakenRErr', tr === agentR && agentR ? `Round ${agentR} is the agent's round.` : done >= 1 ? `Pick round 1 – ${done}.` : 'Complete at least one round first.');
       const tb = okR ? num(roundRows[tr - 1]?.bid) : 0;
       if(okR) bad += setInvalid(`rr${tr}bG`, !(tb >= 0 && (!(pot > 0) || tb < pot)));
       taken = { round:tr, bid:round2(tb || 0), received: round2(pot - (tb || 0)) };
@@ -872,7 +885,7 @@ async function saveChit(){
     const rows = [];
     if(isInt(done) && done > 0 && done < m){
       for(let r = 1; r <= done; r++){
-        const o = roundRows[r - 1] || {}, kind = rowKind(r, agentFirst, taken?.round), paid = num(o.paid), comm = kind === 'auction' ? (num(o.comm || 0)) : 0;
+        const o = roundRows[r - 1] || {}, kind = rowKind(r, agentR, taken?.round), paid = num(o.paid), comm = kind === 'auction' ? (num(o.comm || 0)) : 0;
         bad += setInvalid(`rr${r}dG`, !o.date || diffDays(T, o.date) > 0);
         bad += setInvalid(`rr${r}pG`, !(paid >= 0 && (!(inst > 0) || paid <= inst)));
         if(kind === 'auction') bad += setInvalid(`rr${r}cG`, !(comm >= 0 && (!(inst > 0) || comm <= inst)));
@@ -890,7 +903,7 @@ async function saveChit(){
   if(editingChit){
     const id = editingChit.id;
     commit(() => { const x = findItem(id); Object.assign(x, { name, agent, agentCut:agCut, reminders:rem, files });
-      if(!x.history.length) Object.assign(x, { pot, members:m, installment:inst, interval:iv, start:s, agentFirst });
+      if(!x.history.length) Object.assign(x, { pot, members:m, installment:inst, interval:iv, start:s, agentFirst, agentRound: agentR || 1 });
       if(editRows) applyEditRounds(x, editRows); },
       { type:'success', title:'Chit updated', body: editRows ? `${name} · ${editRows.length} round${editRows.length === 1 ? '' : 's'} updated` : name });
     afterSave();
@@ -898,7 +911,7 @@ async function saveChit(){
   } else {
     const id = uid();
     commit(() => {
-      const c = { id, kind:'chit', catId:'chit', name, agent, pot, members:m, installment:inst, interval:iv, start:s, agentFirst, agentCut:agCut,
+      const c = { id, kind:'chit', catId:'chit', name, agent, pot, members:m, installment:inst, interval:iv, start:s, agentFirst, agentRound: agentR || 1, agentCut:agCut,
         roundsDone:0, taken:null, paidIn:0, commission:0, reminders:rem, status:'active', history:[], files };
       if(past && past.rows.length){
         for(const row of past.rows){
@@ -1050,7 +1063,7 @@ function openRoundSheet(it){
   $('#rDate').value = diffDays(T, due) > 0 ? T : due;
   $('#rLateG').classList.toggle('hidden', diffDays(T, due) >= 0); setNum('rLate', '');
   if(diffDays(T, due) < 0) $('#rSub').textContent = `Overdue — was ${fmtDate(due)} · ${fmtMoney(it.installment)} per person`;
-  if(r === 1 && it.agentFirst) roundMode = 'agent';
+  if(r === agentRound(it) && !it.taken) roundMode = 'agent';
   else if(it.taken) roundMode = 'full';
   else if(r === it.members) roundMode = 'last';
   drawRoundBody();
@@ -1059,7 +1072,7 @@ function openRoundSheet(it){
 function drawRoundBody(){
   const it = roundChit, r = it.roundsDone + 1, I = it.installment, body = $('#rBody');
   if(roundMode === 'agent' || roundMode === 'full' || roundMode === 'last'){
-    const info = roundMode === 'agent' ? `<b>Agent's round.</b> No auction in round 1 — everyone pays the full amount.`
+    const info = roundMode === 'agent' ? `<b>Agent's round.</b> No auction in round ${r} — everyone pays the full amount.`
       : roundMode === 'full' ? `<b>You've already taken this chit</b> (round ${it.taken.round}). Pay the full amount this round.`
       : `<b>Final round.</b> You're the last one waiting, so the full pot of ${fmtMoney(it.pot)} comes to you — no auction.`;
     const after = it.members - r;
@@ -1257,16 +1270,14 @@ function drawCoach(){
   });
 }
 /* ---------- what's new tour: after an update, point at each new feature once ---------- */
-const TOUR_VERSION = '2.1';
+const TOUR_VERSION = '2.2';
 const TOUR_STEPS = [
-  { title:'Finly 2.1 is here', text:'Updates now install right inside Finly with a progress bar. Here\'s a quick look at what else is new.' },
-  { page:'home', sel:'#outflowTile', title:'Outflow by category', text:'Opens at a steady height now. Drag the handle up to see more rows.' },
-  { page:'home', sel:'#fab', title:'EMIs someone else pays', text:'When you add an EMI, turn on "Paid by someone else". It shows in a "Paid by others" card, with call and reminder buttons.' },
-  { page:'ledger', sel:'#screen-ledger .wallet-hero', title:'Lend & borrow', text:'To receive and To pay back sit side by side, and new requests appear by themselves.' },
-  { page:'wallet', sel:'#chitFilter', title:'Chit tabs', text:'Switch between All, Savings and Debt chits.' },
-  { page:'wallet', sel:'#chitList .chit-toggle', title:'Fold the details', text:'Tap Show details to open a chit\'s four detail boxes, and again to fold them.' },
-  { page:'profile', sel:'#relRow', title:'Reminders on time', text:'Check and fix anything that could delay reminders: notifications, battery and background use.' },
-  { page:'profile', sel:'#openPlan', title:'Save to Gallery', text:'The monthly plan image now saves straight to your Gallery.' }
+  { title:'Finly 2.2 is here', text:'Reminders are more reliable, and shared ledger entries now work the way you\'d expect. Here\'s what changed.' },
+  { page:'ledger', sel:'#screen-ledger .wallet-hero', title:'Payments need an OK', text:'On a shared entry, tapping Given or Received moves it to Settled with "Not accepted yet" until the other person accepts.' },
+  { page:'ledger', sel:'#lgList', title:'Accept their payments', text:'When the other person records a payment, it shows here under Requests. Tap Accept, or Not received.' },
+  { page:'ledger', sel:'#lgClosedHead', title:'Delete only removes yours', text:'Deleting a shared entry removes it from your ledger only. The other person keeps their copy.' },
+  { page:'wallet', sel:'#fab', title:'Pick the agent\'s round', text:'When you add a chit, choose which round the agent takes. Round 1 is the default; every other round is auctioned.' },
+  { page:'profile', sel:'#testNotifRow', title:'Reminders with Finly closed', text:'Reminders now use their own alarm and come back after a restart. Tap Send a test, close Finly, and it still arrives.' }
 ];
 let tour = null;
 const shown = el => !!el && el.getClientRects().length > 0 && !el.closest('.hidden');
@@ -1549,57 +1560,90 @@ let lgFilter = 'all';
 
 /* ---------- shared entries: the other person's side of an entry, kept in sync through the server ---------- */
 const SHARE_KEY = () => 'finly-shares-' + user.id;
-let shares = [], sharesMissing = false, sharesBusy = false, sharesFetched = false;
+let shares = [], sharesMissing = false, sharesBusy = false, sharesFetched = false, sharesAgain = false;
 function loadShares(){ try{ shares = JSON.parse(localStorage.getItem(SHARE_KEY()) || '[]'); }catch{ shares = []; } }
+function saveShares(){ try{ localStorage.setItem(SHARE_KEY(), JSON.stringify(shares)); }catch{ /* full */ } }
 const pid = p => p.id || `l-${p.date}-${p.amount}`;
 const shareOf = id => shares.find(r => r.id === id && r.owner === user.id);
+const cleanPay = p => ({ id:pid(p), date:p.date, amount:p.amount, by:p.by || user.id, ...(p.st ? { st:p.st } : {}) });
 const shareData = it => ({ dir:it.dir, note:it.note || '', amount:it.amount, date:it.date, interest:it.interest || null, tenure:it.tenure || null,
-  payments:(it.payments || []).map(p => ({ id:pid(p), date:p.date, amount:p.amount, by:p.by || user.id })) });
+  payments:(it.payments || []).map(cleanPay) });
+/** Same text for the same content, whatever order the server returns keys and payments in. */
+function canon(v){
+  if(Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
+  if(v && typeof v === 'object') return '{' + Object.keys(v).filter(k => v[k] !== undefined).sort().map(k => JSON.stringify(k) + ':' + canon(v[k])).join(',') + '}';
+  return JSON.stringify(v ?? null);
+}
+const dataSig = d => canon({ dir:d?.dir, note:d?.note || '', amount:d?.amount, date:d?.date, interest:d?.interest || null, tenure:d?.tenure || null,
+  payments:[...(d?.payments || [])].map(cleanPay).sort((a, b) => (a.id < b.id ? -1 : 1)) });
+/** The server has the 2.2 update (payments need the other person's OK, delete is per person). */
+const confirmReady = row => !!row && 'owner_hidden' in row;
+/** New payments on this entry need the other person to accept them. */
+function needsOk(it){
+  const row = it.remote ? shares.find(r => r.id === it.shareId) : shareOf(it.id);
+  return confirmReady(row) && row.status === 'accepted' && !!row.counterpart && !(it.remote ? row.owner_hidden : row.counterpart_hidden);
+}
+const lastPayDate = it => [...it.payments].filter(payCounts).sort((a, b) => dayNum(b.date) - dayNum(a.date))[0]?.date;
+/** Active or settled, from the payments that count for me. */
+function settleState(x){
+  if(x.payments.some(payCounts) && lendState(x, T).outstanding <= 0.5){ if(x.status !== 'closed' || !x.closedOn){ x.status = 'closed'; x.closedOn = lastPayDate(x); } }
+  else { x.status = 'active'; delete x.closedOn; }
+}
 /** Entries other people created that name me — shown with the direction flipped. */
 function sharedLends(){
   if(!user.id) return [];
-  return shares.filter(r => r.counterpart === user.id && r.status === 'accepted').map(r => {
+  return shares.filter(r => r.counterpart === user.id && r.status === 'accepted' && !r.counterpart_hidden).map(r => {
     const d = r.data || {}, it = { id:'sh_' + r.id, shareId:r.id, remote:true, kind:'lend', dir: d.dir === 'lent' ? 'borrowed' : 'lent',
       person: r.owner_name || fmtPhone(r.owner_phone) || 'Someone', phone:r.owner_phone, note:d.note || '', amount:d.amount, date:d.date,
-      interest:d.interest || null, tenure:d.tenure || null, payments:d.payments || [], reminders:null, status:'active' };
-    if(it.payments.length && lendState(it, T).outstanding <= 0.5){ it.status = 'closed'; it.closedOn = [...it.payments].sort((a, b) => dayNum(b.date) - dayNum(a.date))[0].date; }
+      interest:d.interest || null, tenure:d.tenure || null, payments:d.payments || [], reminders:null, status:'active', ownerGone: !!r.owner_hidden };
+    settleState(it);
     return it;
   });
 }
 const findLend = id => findItem(id) || sharedLends().find(x => x.id === id);
-const pendingShares = () => shares.filter(r => r.counterpart === user.id && r.status === 'pending');
+const pendingShares = () => shares.filter(r => r.counterpart === user.id && r.status === 'pending' && !r.counterpart_hidden);
+/** Payments the other person recorded that I still have to accept. */
+const payRequests = () => lends().flatMap(it => (it.payments || []).filter(payToConfirm).map(p => ({ it, p })));
 async function refreshShares(){
-  if(!navigator.onLine || sharesBusy || !user.id) return;
+  if(!navigator.onLine || !user.id) return;
+  if(sharesBusy){ sharesAgain = true; return; }
   sharesBusy = true;
   if(!sharesFetched && !shares.length) renderLedger();
   try{
     const r = await fetchShares();
     sharesMissing = !!r.missing;
     if(r.missing) return;
-    const before = new Set(pendingShares().map(x => x.id));
+    const before = new Set(pendingShares().map(x => x.id)), beforePays = new Set(payRequests().map(x => x.p.id)), sig = canon(shares);
     shares = r.data || [];
-    try{ localStorage.setItem(SHARE_KEY(), JSON.stringify(shares)); }catch{ /* full */ }
-    const fresh = sharesFetched ? pendingShares().filter(x => !before.has(x.id)) : [];
-    if(fresh.length) toast({ type:'success', title: fresh.length === 1 ? `${fresh[0].owner_name || 'Someone'} added an entry with you` : `${fresh.length} new ledger requests`,
-      body:'Open Ledger to accept or decline.', ms:6000 });
-    // payments the other person recorded on my entries → into my copy
-    const adds = [];
-    for(const row of shares.filter(x => x.owner === user.id)){
+    saveShares();
+    // payments the other person recorded or accepted on my entries → into my copy
+    const changes = [];
+    for(const row of shares.filter(x => x.owner === user.id && !x.owner_hidden)){
       const it = findItem(row.id); if(!it) continue;
-      const have = new Set((it.payments || []).map(pid));
-      const fresh = (row.data?.payments || []).filter(p => !have.has(p.id));
-      if(fresh.length) adds.push([it.id, fresh]);
+      const mine = new Map((it.payments || []).map(p => [pid(p), p])), upd = [];
+      for(const p of row.data?.payments || []){ const m = mine.get(p.id); if(!m) upd.push(['add', p]); else if((m.st || null) !== (p.st || null)) upd.push(['st', p]); }
+      if(upd.length) changes.push([it.id, upd]);
     }
-    if(adds.length) commit(() => { for(const [id, fresh] of adds){ const x = findItem(id); x.payments.push(...fresh.map(p => ({ id:p.id, date:p.date, amount:p.amount, by:p.by })));
-      if(lendState(x, T).outstanding <= 0.5){ x.status = 'closed'; x.closedOn = [...x.payments].sort((a, b) => dayNum(b.date) - dayNum(a.date))[0].date; } } });
+    if(changes.length) commit(() => { for(const [id, upd] of changes){ const x = findItem(id);
+      for(const [k, p] of upd){ if(k === 'add') x.payments.push(cleanPay(p)); else { const m = x.payments.find(q => pid(q) === p.id); if(p.st) m.st = p.st; else delete m.st; } }
+      settleState(x); } });
     // my entries with a number that the server doesn't have yet (or has an older copy of)
     for(const it of st().items.filter(i => i.kind === 'lend' && i.phone)){
       const row = shareOf(it.id);
-      if(!row || row.status === 'removed' || JSON.stringify(row.data) !== JSON.stringify(shareData(it)) || row.counterpart_phone !== it.phone) await pushShare(it, true);
+      if(!row || row.status === 'removed' || row.owner_hidden || dataSig(row.data) !== dataSig(shareData(it)) || row.counterpart_phone !== it.phone) await pushShare(it, true);
     }
-    renderLedger(); renderBell();
+    if(sharesFetched){
+      const fresh = pendingShares().filter(x => !before.has(x.id)), pays = payRequests().filter(x => !beforePays.has(x.p.id));
+      if(fresh.length) toast({ type:'success', title: fresh.length === 1 ? `${fresh[0].owner_name || 'Someone'} added an entry with you` : `${fresh.length} new ledger requests`, body:'Open Ledger to accept or decline.', ms:6000 });
+      else if(pays.length) toast({ type:'success', title: pays.length === 1 ? `${pays[0].it.person} recorded ${fmtMoney(pays[0].p.amount)}` : `${pays.length} payments to accept`, body:'Open Ledger to accept it.', ms:6000 });
+    }
+    // only redraw when something really changed, so lists never flicker
+    if(canon(shares) !== sig || changes.length){ renderLedger(); renderBell(); }
   }catch(e){ console.warn('Shared entries sync failed', e); }
-  finally{ sharesBusy = false; const first = !sharesFetched; sharesFetched = true; if(first) renderLedger(); }
+  finally{
+    sharesBusy = false; const first = !sharesFetched; sharesFetched = true; if(first) renderLedger();
+    if(sharesAgain){ sharesAgain = false; setTimeout(refreshShares, 300); }
+  }
 }
 async function pushShare(it, quiet){
   if(!it.phone || !navigator.onLine || sharesMissing) return;
@@ -1608,17 +1652,26 @@ async function pushShare(it, quiet){
     const r = await shareUpsert(it.id, it.phone, displayName(), shareData(it));
     if(r.missing){ sharesMissing = true; return; }
     const row = shareOf(it.id), next = { ...(row || {}), id:it.id, owner:user.id, counterpart_phone:it.phone, data:shareData(it), status: row?.status || 'pending', counterpart: r.data === 'linked' ? (row?.counterpart || 'linked') : null };
+    if(row && 'owner_hidden' in row) next.owner_hidden = false;
     shares = shares.filter(x => !(x.id === it.id && x.owner === user.id)).concat(next);
     if(!quiet && r.data === 'linked' && !row) toast({ type:'success', title:`Sent to ${it.person}`, body:'It appears in their ledger once they accept.' });
     if(!quiet) setTimeout(refreshShares, 1500);
   }catch(e){ console.warn('Share failed', e); }
 }
+/** "Not accepted yet" / "didn't accept" on payments I recorded. */
+function payBadges(it){
+  const mine = (it.payments || []).filter(p => p.by === user.id), first = it.person.split(' ')[0];
+  const wait = mine.filter(p => p.st === 'pending'), no = mine.filter(p => p.st === 'no');
+  return (wait.length ? `<span class="badge wait">Not accepted yet by ${esc(first)}</span>` : '')
+    + (no.length ? `<span class="badge due">${esc(first)} didn't accept ${fmtMoney(no.reduce((t, p) => t + p.amount, 0))}</span>` : '');
+}
 function shareChip(it){
-  if(it.remote) return `<span class="badge share">${e3d('👥')}Shared by ${esc(it.person)}</span>`;
+  if(it.remote) return it.ownerGone ? `<span class="badge soft">${esc(it.person.split(' ')[0])} deleted it on their side</span>` : `<span class="badge share">${e3d('👥')}Shared by ${esc(it.person)}</span>`;
   if(!it.phone) return '';
   const row = shareOf(it.id);
   if(!row) return '';
   if(!row.counterpart) return '<span class="badge soft">Not on Finly yet</span>';
+  if(row.counterpart_hidden) return '<span class="badge soft">Removed on their side</span>';
   return row.status === 'accepted' ? `<span class="badge share">${e3d('👥')}Shared</span>`
     : row.status === 'declined' ? '<span class="badge due">Declined</span>' : '<span class="badge soft">Waiting to accept</span>';
 }
@@ -1629,6 +1682,13 @@ function requestCard(r){
     <p>${mine === 'borrowed' ? `You borrowed <b>${fmtMoney(d.amount)}</b> from ${who}` : `You gave <b>${fmtMoney(d.amount)}</b> to ${who}`} on ${fmtDate(d.date)}${d.interest ? ` · ${esc(rateLabel(d))}` : ''}${d.tenure ? ` · ${d.tenure} months` : ''}${d.note ? ` · ${esc(d.note)}` : ''}.</p>
     <div class="req-actions"><button class="btn btn-secondary btn-sm" data-share-dec>Decline</button><button class="btn btn-primary btn-sm" data-share-acc>Accept</button></div></div>`;
 }
+function payRequestCard({ it, p }){
+  const who = esc(it.person), lent = it.dir === 'lent';
+  return `<div class="req-card" data-preq="${esc(it.id)}" data-pay="${esc(p.id)}"><div class="req-top"><span class="glyph" style="--accent:var(--primary)">${e3d(lent ? '💰' : '💸')}</span>
+    <span><b>${who}</b> recorded a payment</span></div>
+    <p>${lent ? `${who} says they paid you back <b>${fmtMoney(p.amount)}</b>` : `${who} says you paid back <b>${fmtMoney(p.amount)}</b>`} on ${fmtDate(p.date)}. Accept to count it.</p>
+    <div class="req-actions"><button class="btn btn-secondary btn-sm" data-pay-no>${lent ? 'Not received' : 'Not correct'}</button><button class="btn btn-primary btn-sm" data-pay-ok>Accept</button></div></div>`;
+}
 async function respondShare(id, accept, btn){
   if(!navigator.onLine) return toast({ type:'warning', title:'You\'re offline', body:'Connect to the internet to respond.' });
   const card = btn?.closest('.req-card');
@@ -1636,6 +1696,36 @@ async function respondShare(id, accept, btn){
   try{ await shareRespond(id, accept); toast({ type: accept ? 'success' : 'warning', title: accept ? 'Added to your ledger' : 'Declined' }); }
   catch{ toast({ type:'error', title:'Couldn\'t respond', body:'Please try again.' }); }
   refreshShares();
+}
+/** Accept or reject a payment the other person recorded. */
+async function respondPay(itemId, payId, ok, btn){
+  if(!navigator.onLine) return toast({ type:'warning', title:'You\'re offline', body:'Connect to the internet to respond.' });
+  const it = findLend(itemId); if(!it) return;
+  const card = btn?.closest('.req-card');
+  if(card){ card.querySelectorAll('button').forEach(x => { x.disabled = true; }); setBusy(btn, true, ok ? 'Accepting…' : 'Saving…'); }
+  try{
+    const r = await shareConfirm(it.remote ? it.shareId : it.id, payId, ok);
+    if(r.missing) throw new Error('missing');
+    const st_ = ok ? 'ok' : 'no';
+    if(it.remote){ const row = shares.find(x => x.id === it.shareId), p = row?.data?.payments?.find(q => q.id === payId); if(p) p.st = st_; saveShares(); renderLedger(); renderBell(); }
+    else commit(() => { const x = findItem(it.id), p = x.payments.find(q => pid(q) === payId); if(p) p.st = st_; settleState(x); });
+    toast({ type: ok ? 'success' : 'warning', title: ok ? 'Payment accepted' : 'Marked as not received', body: ok ? `${it.person} sees it as accepted.` : `${it.person} will see that you didn't accept it.` });
+  }catch{ if(card) card.querySelectorAll('button').forEach(x => { x.disabled = false; setBusy(x, false); }); toast({ type:'error', title:'Couldn\'t save', body:'Please try again.' }); }
+  refreshShares();
+}
+/** Delete a shared entry someone else created — from my ledger only. */
+function deleteRemoteLend(it){
+  confirmBox({ title:`Delete ${it.person}?`, body:`This removes the entry from your ledger only. ${it.person} keeps their copy.`, onYes: async () => {
+    if(!navigator.onLine) return toast({ type:'warning', title:'You\'re offline', body:'Connect to the internet to delete a shared entry.' });
+    try{
+      const r = await shareHide(it.shareId, false);
+      if(r.missing) return toast({ type:'warning', title:'Server update needed', body:'Run supabase/v2-5-ledger-confirm.sql in Supabase → SQL Editor.', ms:7000 });
+      await animateOut(it.id);
+      const row = shares.find(x => x.id === it.shareId); if(row) row.counterpart_hidden = true; saveShares();
+      renderLedger(); renderBell(); scheduleReminders(reminderPlan);
+      toast({ type:'warning', title:'Deleted', body:`${it.person} · from your ledger` });
+    }catch{ toast({ type:'error', title:'Couldn\'t delete', body:'Please try again.' }); }
+  }});
 }
 
 /* ---------- call the person (asks first, then opens the phone dialer) ---------- */
@@ -1655,7 +1745,7 @@ function lendCard(it, i){
   const pct = due ? Math.max(0, Math.min(100, Math.round(diffDays(it.date, T) / Math.max(1, diffDays(it.date, due)) * 100))) : 0;
   return `<article class="item-card ${enterCls('l_' + it.id)}" data-id="${it.id}" style="--accent:${lendColor(it)};--i:${i}">
     <div class="ic-top"><div class="ic-id"><div class="glyph">${lendGlyph(it)}</div><div style="min-width:0"><div class="ic-name">${esc(it.person)}</div>
-      <div class="ic-meta"><span class="badge ${lent ? 'save' : 'debt'}">${lent ? 'You gave' : 'You borrowed'}</span><span class="badge soft">${esc(rateLabel(it))}</span>${shareChip(it)}${when}</div>
+      <div class="ic-meta"><span class="badge ${lent ? 'save' : 'debt'}">${lent ? 'You gave' : 'You borrowed'}</span><span class="badge soft">${esc(rateLabel(it))}</span>${shareChip(it)}${payBadges(it)}${when}</div>
       ${it.note ? `<div class="ic-note">${esc(it.note)}</div>` : ''}</div></div>
       <div class="ic-amt"><div class="amt">${fmtMoney(s_.outstanding)}</div><div class="per">${lent ? 'to receive' : 'to pay back'}</div></div></div>
     ${due ? `<div class="progress-row"><div class="progress-labels"><span>Tenure <b>${it.tenure} month${it.tenure === 1 ? '' : 's'}</b></span><span>${pct}%</span></div>${barHTML('l_' + it.id, pct)}</div>` : ''}
@@ -1663,7 +1753,7 @@ function lendCard(it, i){
       <div class="fig"><span class="fig-label">${lent ? 'Given' : 'Borrowed'}</span><span class="fig-value">${fmtMoney(it.amount)}</span></div>
       ${it.interest ? `<div class="fig"><span class="fig-label">Interest so far</span><span class="fig-value ${lent ? 'pos' : 'neg'}">+${fmtMoney(s_.accrued)}</span></div>` : ''}
       ${s_.paid ? `<div class="fig"><span class="fig-label">${lent ? 'Received' : 'Repaid'}</span><span class="fig-value">${fmtMoney(s_.paid)}</span></div>` : ''}</div>
-      <div class="actions">${callBtn(it)}${it.remote ? '' : `<button class="round-btn ghost" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>`}
+      <div class="actions">${callBtn(it)}${it.remote ? `<button class="round-btn ghost" data-act="ldel" aria-label="Delete ${esc(it.person)}">${ICON.trash}</button>` : `<button class="round-btn ghost" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>`}
       <button class="pay-btn" data-act="lpay" aria-label="${lent ? 'Money received from' : 'Money given to'} ${esc(it.person)}">${ICON.check}<span>${lent ? 'Received' : 'Given'}</span></button></div></div>
   </article>`;
 }
@@ -1675,26 +1765,29 @@ function renderLedger(){
   $('#lgOweFoot').textContent = bor.length ? `${bor.length} ${bor.length === 1 ? 'person' : 'people'}${intr(bor) ? ` · ${fmtMoney(intr(bor))} interest` : ''}` : 'Nothing borrowed';
   const list = act.filter(i => lgFilter === 'all' || i.dir === lgFilter)
     .sort((a, b) => (lendDue(a) ? dayNum(lendDue(a)) : 1e9) - (lendDue(b) ? dayNum(lendDue(b)) : 1e9) || dayNum(b.date) - dayNum(a.date));
-  const reqs = pendingShares();
-  $('#lgList').innerHTML = (reqs.length ? `<div class="req-head">Requests <small>(${reqs.length})</small></div>` + reqs.map(requestCard).join('') : '') + (list.length ? list.map(lendCard).join('')
+  const reqs = pendingShares(), preqs = payRequests(), nreq = reqs.length + preqs.length;
+  setHTML($('#lgList'), (nreq ? `<div class="req-head">Requests <small>(${nreq})</small></div>` + reqs.map(requestCard).join('') + preqs.map(payRequestCard).join('') : '') + (list.length ? list.map(lendCard).join('')
     : firstLoad() || (sharesBusy && !sharesFetched && !shares.length && !act.length) ? skel.cards(2)
     : `<div class="empty"><div class="em">${e3d('🤝')}</div><b>${act.length ? 'Nothing here' : 'No money lent or borrowed'}</b>Keep track of money you gave someone or borrowed, with interest if any.
-       <div class="empty-actions"><button class="btn btn-primary btn-sm" data-lnew="lent">I gave money</button><button class="btn btn-secondary btn-sm" data-lnew="borrowed">I borrowed money</button></div></div>`);
+       <div class="empty-actions"><button class="btn btn-primary btn-sm" data-lnew="lent">I gave money</button><button class="btn btn-secondary btn-sm" data-lnew="borrowed">I borrowed money</button></div></div>`));
   const done = lends().filter(i => i.status === 'closed').sort((a, b) => dayNum(b.closedOn) - dayNum(a.closedOn));
   $('#lgClosedHead').classList.toggle('hidden', !done.length);
   $('#lgClosedCount').textContent = done.length ? `(${done.length})` : '';
-  $('#lgClosedList').innerHTML = done.map(it => `<div class="closed-row" data-id="${it.id}" style="--accent:${lendColor(it)}"><div class="glyph">${lendGlyph(it)}</div>
-    <div style="min-width:0"><div class="cr-name">${esc(it.person)}</div><div class="cr-sub">Settled ${fmtDate(it.closedOn)} · ${it.dir === 'lent' ? 'gave' : 'borrowed'} ${fmtMoney(it.amount)}</div></div>
+  setHTML($('#lgClosedList'), done.map(it => `<div class="closed-row" data-id="${it.id}" style="--accent:${lendColor(it)}"><div class="glyph">${lendGlyph(it)}</div>
+    <div style="min-width:0"><div class="cr-name">${esc(it.person)}</div><div class="cr-sub">Settled ${fmtDate(it.closedOn)} · ${it.dir === 'lent' ? 'gave' : 'borrowed'} ${fmtMoney(it.amount)}</div>${payBadges(it) || (it.remote && it.ownerGone ? shareChip(it) : '') ? `<div class="cr-badges">${payBadges(it)}${it.remote && it.ownerGone ? shareChip(it) : ''}</div>` : ''}</div>
     <div class="cr-amt"><span>${it.dir === 'lent' ? 'Got back' : 'Repaid'}</span>${fmtMoney(lendState(it, T).paid)}</div>
-    ${callBtn(it, 'mini-btn')}<button class="mini-btn" data-act="lpay" aria-label="Payments for ${esc(it.person)}">${ICON.history}</button>${it.remote ? '' : `<button class="mini-btn" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>`}</div>`).join('');
+    ${callBtn(it, 'mini-btn')}<button class="mini-btn" data-act="lpay" aria-label="Payments for ${esc(it.person)}">${ICON.history}</button>${it.remote ? `<button class="mini-btn" data-act="ldel" aria-label="Delete ${esc(it.person)}">${ICON.trash}</button>` : `<button class="mini-btn" data-act="ledit" aria-label="Edit ${esc(it.person)}">${ICON.edit}</button>`}</div>`).join(''));
 }
 function onLedgerClick(e){
   const nw = e.target.closest('[data-lnew]'); if(nw) return openLendSheet(null, nw.dataset.lnew);
   const rq = e.target.closest('[data-share-acc],[data-share-dec]');
   if(rq) return respondShare(rq.closest('[data-share]').dataset.share, rq.hasAttribute('data-share-acc'), rq);
+  const pq = e.target.closest('[data-pay-ok],[data-pay-no]');
+  if(pq){ const c = pq.closest('[data-preq]'); return respondPay(c.dataset.preq, c.dataset.pay, pq.hasAttribute('data-pay-ok'), pq); }
   const b = e.target.closest('[data-act]'); if(!b) return;
   const it = findLend(b.closest('[data-id]')?.dataset.id); if(!it) return;
   if(b.dataset.act === 'lcall') return callPerson(it);
+  if(b.dataset.act === 'ldel') return deleteRemoteLend(it);
   if(b.dataset.act === 'ledit') openLendSheet(it);
   else if(b.dataset.act === 'lpay') openLendPay(it);
 }
@@ -1760,9 +1853,7 @@ function saveLend(){
   if(editingLend){
     const id = editingLend.id;
     commit(() => { const x = findItem(id); Object.assign(x, rec);
-      const left = lendState(x, T).outstanding;
-      if(x.payments.length && left <= 0.5){ if(x.status !== 'closed'){ x.status = 'closed'; x.closedOn = x.payments[x.payments.length - 1].date; } }
-      else { x.status = 'active'; delete x.closedOn; } },
+      settleState(x); },
       { type:'success', title:'Entry updated', body:f.person });
     flashCard(id);
     if(rec.phone) pushShare(findItem(id)); else if(hadPhone) shareRemove(id).catch(() => {});
@@ -1785,7 +1876,7 @@ function deleteLend(){
   confirmBox({ title:`Delete ${it.person}?`, body:`This entry${it.payments.length ? ` and its ${it.payments.length} payment${it.payments.length === 1 ? '' : 's'}` : ''} will be removed. You can undo right after.`, onYes: async () => {
     await animateOut(it.id);
     commit(() => { st().items = st().items.filter(i => i.id !== it.id); }, { type:'warning', title:'Deleted', body:it.person });
-    if(it.phone) shareRemove(it.id).catch(() => {});
+    if(it.phone) shareHide(it.id, true).catch(() => {});
   }});
 }
 
@@ -1823,7 +1914,8 @@ function openLendPay(it){
   $$('#lendPaySheet .frow, #lpCalc, #lpSave').forEach(el => el.classList.toggle('hidden', closed));
   $('#lpSave').textContent = lent ? 'Received' : 'Given';
   $('#lpHist').innerHTML = it.payments.length ? [...it.payments].sort((a, b) => dayNum(b.date) - dayNum(a.date))
-      .map(p => `<div class="h-row"><span class="h-round">${e3d(lent ? '💰' : '💸')}</span><span class="h-desc">${lent ? 'Received' : 'Repaid'}<br><span class="h-date">${fmtDate(p.date)}</span></span><span class="h-amt">${fmtMoney(p.amount)}</span></div>`).join('')
+      .map(p => { const mine = p.by === user.id, tag = p.st === 'pending' ? (mine ? 'Not accepted yet' : 'Waiting for you to accept') : p.st === 'no' ? (mine ? 'Not accepted' : 'You didn\'t accept') : p.st === 'ok' ? 'Accepted' : '';
+        return `<div class="h-row ${p.st === 'no' ? 'struck' : ''}"><span class="h-round">${e3d(lent ? '💰' : '💸')}</span><span class="h-desc">${lent ? 'Received' : 'Repaid'}${tag ? ` · <span class="h-tag ${p.st}">${tag}</span>` : ''}<br><span class="h-date">${fmtDate(p.date)}${p.by && !mine ? ` · recorded by ${esc(it.person)}` : ''}</span></span><span class="h-amt">${fmtMoney(p.amount)}</span></div>`; }).join('')
     : '<div class="h-desc" style="padding:6px 0">No payments yet.</div>';
   drawLendPay();
   openSheet('lendPaySheet');
@@ -1850,21 +1942,32 @@ async function saveLendPay(){
   const it = payLend, c = lendPayCheck();
   if(setInvalid('lpDateG', !c.date || diffDays(T, c.date) > 0 || dayNum(c.date) < dayNum($('#lpDate').min))) return;
   if(!c.ok) return;
-  const settles = c.sp.after <= 0.5, id = it.id, lent = it.dir === 'lent';
+  const settles = c.sp.after <= 0.5, id = it.id, lent = it.dir === 'lent', ask = needsOk(it), first = it.person.split(' ')[0];
+  const pay = { id:uid(), date:c.date, amount:round2(c.v), by:user.id, ...(ask ? { st:'pending' } : {}) };
+  const waitNote = ask ? ` · waiting for ${first} to accept` : '';
+  const done = settles ? { type:'success', title:`${it.person} — all settled 🎉`, body:`Moved to Settled${waitNote}.` }
+    : { type:'success', title: lent ? `Received ${fmtMoney(c.v)}` : `Repaid ${fmtMoney(c.v)}`, body:`${it.person} · ${fmtMoney(c.sp.after)} ${lent ? 'still to receive' : 'still to pay back'}${waitNote}` };
   if(it.remote){
     if(!navigator.onLine) return toast({ type:'warning', title:'You\'re offline', body:'Shared entries need the internet to record a payment.' });
     const sb = $('#lpSave'); setBusy(sb, true, 'Saving…');
-    try{ await shareAddPayment(it.shareId, { id:uid(), date:c.date, amount:round2(c.v), by:user.id }); await refreshShares(); setBusy(sb, false); closeSheet('lendPaySheet');
-      toast({ type:'success', title: lent ? `Received ${fmtMoney(c.v)}` : `Repaid ${fmtMoney(c.v)}`, body:`${it.person} sees this payment too.` }); }
-    catch{ setBusy(sb, false); toast({ type:'error', title:'Couldn\'t record the payment', body:'Please try again.' }); }
+    try{
+      const r = await shareAddPayment(it.shareId, pay);
+      if(r.missing) throw new Error('missing');
+      setBusy(sb, false); closeSheet('lendPaySheet');
+      if(settles) await animateOut(id);
+      // show it straight away; the next refresh confirms it from the server
+      const row = shares.find(x => x.id === it.shareId);
+      if(row){ row.data = { ...(row.data || {}), payments:[...(row.data?.payments || []), pay] }; saveShares(); }
+      renderLedger(); renderBell(); scheduleReminders(reminderPlan);
+      if(!settles) flashCard(id);
+      toast(done);
+      refreshShares();
+    }catch{ setBusy(sb, false); toast({ type:'error', title:'Couldn\'t record the payment', body:'Please try again.' }); }
     return;
   }
   closeSheet('lendPaySheet');
   if(settles) await animateOut(id);
-  commit(() => { const x = findItem(id); x.payments.push({ id:uid(), date:c.date, amount:round2(c.v), by:user.id });
-      if(settles){ x.status = 'closed'; x.closedOn = c.date; } },
-    settles ? { type:'success', title:`${it.person} — all settled 🎉`, body:'Moved to Settled.' }
-      : { type:'success', title: lent ? `Received ${fmtMoney(c.v)}` : `Repaid ${fmtMoney(c.v)}`, body:`${it.person} · ${fmtMoney(c.sp.after)} ${lent ? 'still to receive' : 'still to pay back'}` });
+  commit(() => { const x = findItem(id); x.payments.push(pay); settleState(x); }, done);
   if(!settles) flashCard(id);
   if(it.phone) pushShare(findItem(id), true);
 }
@@ -2531,7 +2634,7 @@ function wire(){
   $('#testNotifRow').addEventListener('click', async () => {
     if(!isNative) return toast({ type:'warning', title:'Works in the Android app', body:'Phone notifications need the installed app.' });
     const r = await testNotification(); refreshNotifyStatus();
-    if(r === 'sent') toast({ type:'success', title:'Test notification on its way', body:'It should appear in about 5 seconds. If not, check Settings → Apps → Finly → Notifications and Battery.', ms:6000 });
+    if(r === 'sent') toast({ type:'success', title:'Test reminder in 20 seconds', body:'Close Finly now (swipe it away from Recents too). If it still arrives, your EMI reminders will arrive the same way. If not, open Reminder reliability below.', ms:9000 });
     else toast({ type:'warning', title:'Notifications are blocked', body:'Allow them in Android Settings → Apps → Finly → Notifications.', ms:7000 });
   });
   $('#sortBtn').addEventListener('click', () => { sortMode = sortMode === 'due' ? 'amount' : 'due'; $('#sortLabel').textContent = sortMode === 'due' ? 'Due date' : 'Amount'; flip($('#cardList'), renderHome); flushBars(); });
@@ -2588,7 +2691,7 @@ function wire(){
   $('#filePicker').addEventListener('change', e => { const f = e.target.files?.[0]; if(f) attPicked(f); });
 
   const chitChanged = () => { chitSummary(); drawRounds(); };
-  bindSwitch('cAgentFirstRow', 'cAgentFirst', chitChanged);
+  bindSwitch('cAgentFirstRow', 'cAgentFirst', () => { drawAgentRow(); chitChanged(); });
   bindSwitch('cProgRow', 'cProg', on => { $('#cProgFields').classList.toggle('hidden', !on); chitChanged(); footShadow($('#chitSheet')); });
   bindSwitch('cTakenRow', 'cTaken', on => { $('#cTakenFields').classList.toggle('hidden', !on); chitChanged(); });
   $('#cInst').addEventListener('input', () => { instTouched = $('#cInst').value !== ''; chitChanged(); });
@@ -2597,6 +2700,7 @@ function wire(){
     if(!instTouched && p > 0 && m >= 2) setNum('cInst', round2(p / m));
     chitChanged();
   }));
+  $('#cAgentR').addEventListener('input', () => { drawAgentRow(); chitChanged(); });
   ['cInt', 'cStart', 'cDone', 'cTakenR'].forEach(id => { $('#' + id).addEventListener('input', chitChanged); $('#' + id).addEventListener('change', chitChanged); });
   $('#cAgComm').addEventListener('input', chitSummary);
   $('#cRounds').addEventListener('input', onRoundsInput);
@@ -2712,7 +2816,7 @@ function wire(){
    ENTRY
 ================================================================ */
 export function startApp(u, { logout }){
-  user = u; onLogout = logout;
+  user = u; onLogout = logout; setLedgerViewer(u.id);
   wire();
   seen.clear(); Object.keys(prevPct).forEach(k => delete prevPct[k]); Object.keys(lastNum).forEach(k => delete lastNum[k]);
   filter = 'all'; page = 'home';
@@ -2749,8 +2853,12 @@ export function startApp(u, { logout }){
   syncLauncherIcon();
   setTimeout(() => { if(needsWhatsapp()) startCoach(); else { maybeWhatsNew(); setTimeout(() => maybeStartTour(), 900); setTimeout(maybeAskReliability, 1500); } }, 1400);
 }
+let lastResume = 0;
 export function onResumeApp(){
   if(!store.uid) return;
+  // Android reports a resume and a visibility change for the same return (e.g. from Recents): handle it once
+  if(Date.now() - lastResume < 1500) return;
+  lastResume = Date.now();
   refreshToday(); render(); scheduleReminders(reminderPlan); scheduleSync(300); checkUpdates(false).catch(() => {}); refreshNotifyStatus();
   checkDevice(false); refreshShares(); schedulePlanNotice(st().settings.alertsOn); drawCoach(); drawReliability();
 }

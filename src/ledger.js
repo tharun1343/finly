@@ -3,6 +3,16 @@ import { dayNum, addMonths, round2 } from './util.js';
 /** Interest per year as a fraction: 2 % a month → 0.24. */
 const yearlyRate = it => !it.interest ? 0 : (it.interest.rate / 100) * (it.interest.per === 'year' ? 1 : 12);
 
+/**
+ * Payments on a shared entry need the other person's OK: st 'pending' | 'ok' | 'no' (none = confirmed).
+ * A pending payment counts for the person who recorded it, not yet for the other person; a rejected one counts for nobody.
+ */
+let viewer = null;
+export const setLedgerViewer = id => { viewer = id; };
+export const payCounts = p => !p.st || p.st === 'ok' || (p.st === 'pending' && (!viewer || p.by === viewer));
+/** A payment the other person recorded that I still have to accept. */
+export const payToConfirm = p => p.st === 'pending' && !!viewer && p.by !== viewer;
+
 /** End of the tenure, or null when there is no fixed tenure. */
 export const lendDue = it => it.tenure ? addMonths(it.date, it.tenure) : null;
 
@@ -14,7 +24,7 @@ export function lendState(it, asOf){
   const r = yearlyRate(it), end = dayNum(asOf);
   const accrue = (p, from, to) => r && to > from ? p * r * (to - from) / 365 : 0;
   let principal = it.amount, interest = 0, accrued = 0, paid = 0, t = dayNum(it.date);
-  const pays = [...(it.payments || [])].sort((a, b) => dayNum(a.date) - dayNum(b.date));
+  const pays = (it.payments || []).filter(payCounts).sort((a, b) => dayNum(a.date) - dayNum(b.date));
   for(const p of pays){
     const d = dayNum(p.date); if(d > end) break;
     const a = accrue(principal, t, d); interest += a; accrued += a; t = Math.max(t, d);

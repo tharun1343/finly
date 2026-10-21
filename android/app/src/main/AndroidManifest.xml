@@ -26,6 +26,17 @@
             <intent-filter><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter>
         </receiver>
 
+        <!-- Payment reminders: fire with Finly closed, and come back after a reboot, an update or a clock change -->
+        <receiver android:name=".ReminderReceiver" android:exported="false" android:directBootAware="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
         <!-- One launcher entry per colour palette; the app enables the one matching the chosen palette. -->
         <activity-alias
             android:name=".Icon_sapphire"
@@ -185,6 +196,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Reminders must fire on time while the app is closed: exact alarms (granted automatically for reminder apps) and notifications. -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- In-app updates: download the new APK and hand it to the Android installer. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />

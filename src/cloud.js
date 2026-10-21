@@ -83,6 +83,14 @@ export const shareUpsert = (id, phone, ownerName, data) => rpc('share_upsert', {
 export const shareRespond = (id, accept) => rpc('share_respond', { p_id:id, p_accept:accept });
 export const shareAddPayment = (id, payment) => rpc('share_add_payment', { p_id:id, p_payment:payment });
 export const shareRemove = id => rpc('share_remove', { p_id:id });
+/** Accept or reject a payment the other person recorded (needs supabase/v2-5-ledger-confirm.sql). */
+export const shareConfirm = (id, payId, ok) => rpc('share_confirm', { p_id:id, p_pay_id:payId, p_ok:ok });
+/** Delete an entry from my ledger only; the other person keeps theirs. Falls back to share_remove on older servers. */
+export async function shareHide(id, owner){
+  const r = await rpc('share_hide', { p_id:id });
+  if(r.missing && owner) return shareRemove(id);
+  return r;
+}
 
 /* ---------- live updates: requests, data from other devices and device removal arrive instantly ---------- */
 let liveChannel = null;

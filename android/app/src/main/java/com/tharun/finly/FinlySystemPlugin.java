@@ -432,6 +432,53 @@ public class FinlySystemPlugin extends Plugin {
         call.resolve(r);
     }
 
+    /* ---------- reminders (see ReminderReceiver) ---------- */
+
+    /** Replaces a group of reminder slots: [{ key, at, until, due, nid, title, body, item, plan }]. */
+    @PluginMethod
+    public void setReminders(PluginCall call) {
+        try {
+            JSArray list = call.getArray("list", new JSArray());
+            ReminderReceiver.setGroup(getContext(), call.getString("group", "reminders"), list);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Couldn't set reminders: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void testReminder(PluginCall call) {
+        ReminderReceiver.test(getContext(), call.getLong("delay", 10000L));
+        call.resolve();
+    }
+
+    /** Item (or monthly plan) a tapped reminder should open; cleared once read. */
+    static String launchItem, launchPlan;
+
+    static void onReminderTap(String item, String plan) {
+        FinlySystemPlugin p = instance;
+        if (p == null || !p.hasListeners("reminderTap")) {
+            // the app is still starting: it asks for this with takeLaunchTarget()
+            launchItem = item;
+            launchPlan = plan;
+            return;
+        }
+        JSObject ev = new JSObject();
+        ev.put("item", item == null ? "" : item);
+        ev.put("plan", plan == null ? "" : plan);
+        p.notifyListeners("reminderTap", ev);
+    }
+
+    @PluginMethod
+    public void takeLaunchTarget(PluginCall call) {
+        JSObject r = new JSObject();
+        r.put("item", launchItem == null ? "" : launchItem);
+        r.put("plan", launchPlan == null ? "" : launchPlan);
+        launchItem = null;
+        launchPlan = null;
+        call.resolve(r);
+    }
+
     /* ---------- device ---------- */
 
     @PluginMethod
